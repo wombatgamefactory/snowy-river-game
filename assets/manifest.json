@@ -1,0 +1,732 @@
+[
+ {
+  "id": "card-escape-1",
+  "file": "cards/card-escape-1.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 46046,
+  "status": "real",
+  "what": "Escape 1 (trophy icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-escape-2",
+  "file": "cards/card-escape-2.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 46840,
+  "status": "real",
+  "what": "Escape 2 (trophy icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-escape-3",
+  "file": "cards/card-escape-3.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 47060,
+  "status": "real",
+  "what": "Escape 3 (trophy icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-escape-4",
+  "file": "cards/card-escape-4.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 46070,
+  "status": "real",
+  "what": "Escape 4 (trophy icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-escape-5",
+  "file": "cards/card-escape-5.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 47030,
+  "status": "real",
+  "what": "Escape 5 (trophy icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-escape-6",
+  "file": "cards/card-escape-6.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 47250,
+  "status": "real",
+  "what": "Escape 6 (trophy icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-escape-7",
+  "file": "cards/card-escape-7.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 45854,
+  "status": "real",
+  "what": "Escape 7 (trophy icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-escape-8",
+  "file": "cards/card-escape-8.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 47672,
+  "status": "real",
+  "what": "Escape 8 (trophy icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-escape-9",
+  "file": "cards/card-escape-9.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 47544,
+  "status": "real",
+  "what": "Escape 9 (trophy icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-escape-10",
+  "file": "cards/card-escape-10.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 47668,
+  "status": "real",
+  "what": "Escape 10 (trophy icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-escape-11",
+  "file": "cards/card-escape-11.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 46666,
+  "status": "real",
+  "what": "Escape 11 (trophy icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-escape-12",
+  "file": "cards/card-escape-12.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 47298,
+  "status": "real",
+  "what": "Escape 12 (trophy icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-climb-1",
+  "file": "cards/card-climb-1.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 32230,
+  "status": "real",
+  "what": "Climb 1 (stockwhip icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-climb-2",
+  "file": "cards/card-climb-2.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 33242,
+  "status": "real",
+  "what": "Climb 2 (stockwhip icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-climb-3",
+  "file": "cards/card-climb-3.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 33370,
+  "status": "real",
+  "what": "Climb 3 (stockwhip icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-climb-4",
+  "file": "cards/card-climb-4.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 33044,
+  "status": "real",
+  "what": "Climb 4 (stockwhip icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-climb-5",
+  "file": "cards/card-climb-5.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 33376,
+  "status": "real",
+  "what": "Climb 5 (stockwhip icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-climb-6",
+  "file": "cards/card-climb-6.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 33394,
+  "status": "real",
+  "what": "Climb 6 (stockwhip icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-climb-7",
+  "file": "cards/card-climb-7.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 32878,
+  "status": "real",
+  "what": "Climb 7 (stockwhip icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-climb-8",
+  "file": "cards/card-climb-8.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 33518,
+  "status": "real",
+  "what": "Climb 8 (stockwhip icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-climb-9",
+  "file": "cards/card-climb-9.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 33358,
+  "status": "real",
+  "what": "Climb 9 (stockwhip icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-climb-10",
+  "file": "cards/card-climb-10.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 33654,
+  "status": "real",
+  "what": "Climb 10 (stockwhip icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-climb-11",
+  "file": "cards/card-climb-11.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 32944,
+  "status": "real",
+  "what": "Climb 11 (stockwhip icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-climb-12",
+  "file": "cards/card-climb-12.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 33578,
+  "status": "real",
+  "what": "Climb 12 (stockwhip icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-descent-1",
+  "file": "cards/card-descent-1.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 35218,
+  "status": "real",
+  "what": "Descent 1 (hat icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-descent-2",
+  "file": "cards/card-descent-2.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 36050,
+  "status": "real",
+  "what": "Descent 2 (hat icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-descent-3",
+  "file": "cards/card-descent-3.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 35694,
+  "status": "real",
+  "what": "Descent 3 (hat icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-descent-4",
+  "file": "cards/card-descent-4.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 35384,
+  "status": "real",
+  "what": "Descent 4 (hat icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-descent-5",
+  "file": "cards/card-descent-5.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 36092,
+  "status": "real",
+  "what": "Descent 5 (hat icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-descent-6",
+  "file": "cards/card-descent-6.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 36164,
+  "status": "real",
+  "what": "Descent 6 (hat icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-descent-7",
+  "file": "cards/card-descent-7.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 35734,
+  "status": "real",
+  "what": "Descent 7 (hat icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-descent-8",
+  "file": "cards/card-descent-8.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 36184,
+  "status": "real",
+  "what": "Descent 8 (hat icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-descent-9",
+  "file": "cards/card-descent-9.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 36086,
+  "status": "real",
+  "what": "Descent 9 (hat icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-descent-10",
+  "file": "cards/card-descent-10.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 36720,
+  "status": "real",
+  "what": "Descent 10 (hat icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-descent-11",
+  "file": "cards/card-descent-11.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 35772,
+  "status": "real",
+  "what": "Descent 11 (hat icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-descent-12",
+  "file": "cards/card-descent-12.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 36394,
+  "status": "real",
+  "what": "Descent 12 (hat icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-home-1",
+  "file": "cards/card-home-1.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 27952,
+  "status": "real",
+  "what": "Home 1 (horseshoe icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-home-2",
+  "file": "cards/card-home-2.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 28750,
+  "status": "real",
+  "what": "Home 2 (horseshoe icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-home-3",
+  "file": "cards/card-home-3.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 28840,
+  "status": "real",
+  "what": "Home 3 (horseshoe icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-home-4",
+  "file": "cards/card-home-4.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 28556,
+  "status": "real",
+  "what": "Home 4 (horseshoe icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-home-5",
+  "file": "cards/card-home-5.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 28620,
+  "status": "real",
+  "what": "Home 5 (horseshoe icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-home-6",
+  "file": "cards/card-home-6.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 28658,
+  "status": "real",
+  "what": "Home 6 (horseshoe icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-home-7",
+  "file": "cards/card-home-7.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 28198,
+  "status": "real",
+  "what": "Home 7 (horseshoe icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-home-8",
+  "file": "cards/card-home-8.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 28562,
+  "status": "real",
+  "what": "Home 8 (horseshoe icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-home-9",
+  "file": "cards/card-home-9.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 28692,
+  "status": "real",
+  "what": "Home 9 (horseshoe icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-home-10",
+  "file": "cards/card-home-10.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 29206,
+  "status": "real",
+  "what": "Home 10 (horseshoe icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-home-11",
+  "file": "cards/card-home-11.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 28328,
+  "status": "real",
+  "what": "Home 11 (horseshoe icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-home-12",
+  "file": "cards/card-home-12.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 29028,
+  "status": "real",
+  "what": "Home 12 (horseshoe icon)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-back",
+  "file": "cards/card-back.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 41796,
+  "status": "real",
+  "what": "Card back (teal, galloping mob roundel)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "brumby-front",
+  "file": "cards/brumby-front.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 47348,
+  "status": "real",
+  "what": "Brumby card front (+2)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "brumby-back",
+  "file": "cards/brumby-back.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 22488,
+  "status": "real",
+  "what": "Brumby card back",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "chase",
+  "file": "cards/chase.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 31638,
+  "status": "real",
+  "what": "Chase choice card (red, rider plunging down the slope)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "watch",
+  "file": "cards/watch.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 27578,
+  "status": "real",
+  "what": "Watch choice card (grey, stockman on the ledge with wombat)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "mountain-7",
+  "file": "cards/mountain-7.webp",
+  "width": 480,
+  "height": 336,
+  "bytes": 70942,
+  "status": "real",
+  "what": "Mountain card, 0-7 side (2-4 players), landscape, cream",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "mountain-6",
+  "file": "cards/mountain-6.webp",
+  "width": 480,
+  "height": 336,
+  "bytes": 71216,
+  "status": "real",
+  "what": "Mountain card, 0-6 side (5 players), landscape, pale blue",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "colt",
+  "file": "cards/colt.webp",
+  "width": 480,
+  "height": 336,
+  "bytes": 38608,
+  "status": "real",
+  "what": "The Colt (prize horse with rosette), landscape",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "icon-escape",
+  "file": "icon-escape.webp",
+  "width": 128,
+  "height": 128,
+  "bytes": 4926,
+  "status": "real",
+  "what": "Escape suit icon (trophy), black on transparent, for light chips",
+  "source": "images/suit-icon-escape.png"
+ },
+ {
+  "id": "badge-escape",
+  "file": "badge-escape.webp",
+  "width": 128,
+  "height": 128,
+  "bytes": 6364,
+  "status": "real",
+  "what": "Escape badge: trophy icon in cream on a escape coloured disc (colour-blind cue)",
+  "source": "images/suit-icon-escape.png"
+ },
+ {
+  "id": "icon-climb",
+  "file": "icon-climb.webp",
+  "width": 128,
+  "height": 128,
+  "bytes": 3782,
+  "status": "real",
+  "what": "Climb suit icon (stockwhip), black on transparent, for light chips",
+  "source": "images/suit-icon-climb.png"
+ },
+ {
+  "id": "badge-climb",
+  "file": "badge-climb.webp",
+  "width": 128,
+  "height": 128,
+  "bytes": 5308,
+  "status": "real",
+  "what": "Climb badge: stockwhip icon in cream on a climb coloured disc (colour-blind cue)",
+  "source": "images/suit-icon-climb.png"
+ },
+ {
+  "id": "icon-descent",
+  "file": "icon-descent.webp",
+  "width": 128,
+  "height": 128,
+  "bytes": 2230,
+  "status": "real",
+  "what": "Descent suit icon (hat), black on transparent, for light chips",
+  "source": "images/suit-icon-descent.png"
+ },
+ {
+  "id": "badge-descent",
+  "file": "badge-descent.webp",
+  "width": 128,
+  "height": 128,
+  "bytes": 4526,
+  "status": "real",
+  "what": "Descent badge: hat icon in cream on a descent coloured disc (colour-blind cue)",
+  "source": "images/suit-icon-descent.png"
+ },
+ {
+  "id": "icon-home",
+  "file": "icon-home.webp",
+  "width": 128,
+  "height": 128,
+  "bytes": 4294,
+  "status": "real",
+  "what": "Home suit icon (horseshoe), black on transparent, for light chips",
+  "source": "images/suit-icon-home.png"
+ },
+ {
+  "id": "badge-home",
+  "file": "badge-home.webp",
+  "width": 128,
+  "height": 128,
+  "bytes": 5964,
+  "status": "real",
+  "what": "Home badge: horseshoe icon in cream on a home coloured disc (colour-blind cue)",
+  "source": "images/suit-icon-home.png"
+ },
+ {
+  "id": "mob-marker",
+  "file": "mob-marker.webp",
+  "width": 256,
+  "height": 256,
+  "bytes": 7782,
+  "status": "real",
+  "what": "Mob marker (horse-head chess-piece style token, rendered preview of the 3D-printed piece), transparent",
+  "source": "3d-print/summit-marker-horse-v1-preview-front34.png"
+ },
+ {
+  "id": "hero-wide",
+  "file": "hero-wide.webp",
+  "width": 1600,
+  "height": 670,
+  "bytes": 181556,
+  "status": "real",
+  "what": "Key art with title Snowy River (21:9), top 17 px trimmed",
+  "source": "AI-Art/snowy-river-key-art-wide.png"
+ },
+ {
+  "id": "avatar-1",
+  "file": "avatar-1.webp",
+  "width": 192,
+  "height": 192,
+  "bytes": 14502,
+  "status": "real",
+  "what": "Seat 1 avatar: the Escape horse, circular with ink ring",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "avatar-2",
+  "file": "avatar-2.webp",
+  "width": 192,
+  "height": 192,
+  "bytes": 9144,
+  "status": "real",
+  "what": "Seat 2 avatar: the Climb rider, seen from behind, circular with ink ring",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "avatar-3",
+  "file": "avatar-3.webp",
+  "width": 192,
+  "height": 192,
+  "bytes": 9154,
+  "status": "real",
+  "what": "Seat 3 avatar: the Descent rider, circular with ink ring",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "avatar-4",
+  "file": "avatar-4.webp",
+  "width": 192,
+  "height": 192,
+  "bytes": 7184,
+  "status": "real",
+  "what": "Seat 4 avatar: the Home rider in silhouette, circular with ink ring",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "avatar-5",
+  "file": "avatar-5.webp",
+  "width": 192,
+  "height": 192,
+  "bytes": 9224,
+  "status": "real",
+  "what": "Seat 5 avatar: the Watch stockman, circular with ink ring",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "favicon",
+  "file": "favicon.png",
+  "width": 64,
+  "height": 64,
+  "bytes": 10821,
+  "status": "real",
+  "what": "Favicon: the Escape horse head, 64 px",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "table-texture",
+  "file": "table-texture.webp",
+  "width": 512,
+  "height": 512,
+  "bytes": 9632,
+  "status": "real",
+  "what": "Seamless 512 px table tile: Mountain card woodcut hatching mapped to a dark brown range, mirrored 2 x 2",
+  "source": "TTS/Snowy-River-Cards.png (Mountain card 0-7 side)"
+ }
+]
