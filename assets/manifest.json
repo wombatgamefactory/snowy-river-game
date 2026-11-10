@@ -4,9 +4,9 @@
   "file": "cards/card-escape-1.webp",
   "width": 300,
   "height": 428,
-  "bytes": 46046,
+  "bytes": 44810,
   "status": "real",
-  "what": "Escape 1 (trophy icon)",
+  "what": "Escape 1 split face (trophy icon): climb 1 at the top, descent 12 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -14,9 +14,9 @@
   "file": "cards/card-escape-2.webp",
   "width": 300,
   "height": 428,
-  "bytes": 46840,
+  "bytes": 44082,
   "status": "real",
-  "what": "Escape 2 (trophy icon)",
+  "what": "Escape 2 split face (trophy icon): climb 2 at the top, descent 11 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -24,9 +24,9 @@
   "file": "cards/card-escape-3.webp",
   "width": 300,
   "height": 428,
-  "bytes": 47060,
+  "bytes": 45074,
   "status": "real",
-  "what": "Escape 3 (trophy icon)",
+  "what": "Escape 3 split face (trophy icon): climb 3 at the top, descent 10 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -34,9 +34,9 @@
   "file": "cards/card-escape-4.webp",
   "width": 300,
   "height": 428,
-  "bytes": 46070,
+  "bytes": 44420,
   "status": "real",
-  "what": "Escape 4 (trophy icon)",
+  "what": "Escape 4 split face (trophy icon): climb 4 at the top, descent 9 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -44,9 +44,9 @@
   "file": "cards/card-escape-5.webp",
   "width": 300,
   "height": 428,
-  "bytes": 47030,
+  "bytes": 44608,
   "status": "real",
-  "what": "Escape 5 (trophy icon)",
+  "what": "Escape 5 split face (trophy icon): climb 5 at the top, descent 8 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -54,9 +54,9 @@
   "file": "cards/card-escape-6.webp",
   "width": 300,
   "height": 428,
-  "bytes": 47250,
+  "bytes": 44896,
   "status": "real",
-  "what": "Escape 6 (trophy icon)",
+  "what": "Escape 6 split face (trophy icon): climb 6 at the top, descent 7 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -64,9 +64,9 @@
   "file": "cards/card-escape-7.webp",
   "width": 300,
   "height": 428,
-  "bytes": 45854,
+  "bytes": 44352,
   "status": "real",
-  "what": "Escape 7 (trophy icon)",
+  "what": "Escape 7 split face (trophy icon): climb 7 at the top, descent 6 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -74,9 +74,9 @@
   "file": "cards/card-escape-8.webp",
   "width": 300,
   "height": 428,
-  "bytes": 47672,
+  "bytes": 44482,
   "status": "real",
-  "what": "Escape 8 (trophy icon)",
+  "what": "Escape 8 split face (trophy icon): climb 8 at the top, descent 5 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -84,9 +84,9 @@
   "file": "cards/card-escape-9.webp",
   "width": 300,
   "height": 428,
-  "bytes": 47544,
+  "bytes": 44452,
   "status": "real",
-  "what": "Escape 9 (trophy icon)",
+  "what": "Escape 9 split face (trophy icon): climb 9 at the top, descent 4 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -94,9 +94,9 @@
   "file": "cards/card-escape-10.webp",
   "width": 300,
   "height": 428,
-  "bytes": 47668,
+  "bytes": 44860,
   "status": "real",
-  "what": "Escape 10 (trophy icon)",
+  "what": "Escape 10 split face (trophy icon): climb 10 at the top, descent 3 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -104,9 +104,9 @@
   "file": "cards/card-escape-11.webp",
   "width": 300,
   "height": 428,
-  "bytes": 46666,
+  "bytes": 44178,
   "status": "real",
-  "what": "Escape 11 (trophy icon)",
+  "what": "Escape 11 split face (trophy icon): climb 11 at the top, descent 2 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -114,9 +114,9 @@
   "file": "cards/card-escape-12.webp",
   "width": 300,
   "height": 428,
-  "bytes": 47298,
+  "bytes": 43952,
   "status": "real",
-  "what": "Escape 12 (trophy icon)",
+  "what": "Escape 12 split face (trophy icon): climb 12 at the top, descent 1 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -124,9 +124,9 @@
   "file": "cards/card-climb-1.webp",
   "width": 300,
   "height": 428,
-  "bytes": 32230,
+  "bytes": 32466,
   "status": "real",
-  "what": "Climb 1 (stockwhip icon)",
+  "what": "Climb 1 split face (whip icon): climb 1 at the top, descent 12 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -134,9 +134,9 @@
   "file": "cards/card-climb-2.webp",
   "width": 300,
   "height": 428,
-  "bytes": 33242,
+  "bytes": 31976,
   "status": "real",
-  "what": "Climb 2 (stockwhip icon)",
+  "what": "Climb 2 split face (whip icon): climb 2 at the top, descent 11 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -144,9 +144,9 @@
   "file": "cards/card-climb-3.webp",
   "width": 300,
   "height": 428,
-  "bytes": 33370,
+  "bytes": 32608,
   "status": "real",
-  "what": "Climb 3 (stockwhip icon)",
+  "what": "Climb 3 split face (whip icon): climb 3 at the top, descent 10 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -154,9 +154,9 @@
   "file": "cards/card-climb-4.webp",
   "width": 300,
   "height": 428,
-  "bytes": 33044,
+  "bytes": 32320,
   "status": "real",
-  "what": "Climb 4 (stockwhip icon)",
+  "what": "Climb 4 split face (whip icon): climb 4 at the top, descent 9 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -164,9 +164,9 @@
   "file": "cards/card-climb-5.webp",
   "width": 300,
   "height": 428,
-  "bytes": 33376,
+  "bytes": 32346,
   "status": "real",
-  "what": "Climb 5 (stockwhip icon)",
+  "what": "Climb 5 split face (whip icon): climb 5 at the top, descent 8 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -174,9 +174,9 @@
   "file": "cards/card-climb-6.webp",
   "width": 300,
   "height": 428,
-  "bytes": 33394,
+  "bytes": 32202,
   "status": "real",
-  "what": "Climb 6 (stockwhip icon)",
+  "what": "Climb 6 split face (whip icon): climb 6 at the top, descent 7 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -184,9 +184,9 @@
   "file": "cards/card-climb-7.webp",
   "width": 300,
   "height": 428,
-  "bytes": 32878,
+  "bytes": 32274,
   "status": "real",
-  "what": "Climb 7 (stockwhip icon)",
+  "what": "Climb 7 split face (whip icon): climb 7 at the top, descent 6 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -194,9 +194,9 @@
   "file": "cards/card-climb-8.webp",
   "width": 300,
   "height": 428,
-  "bytes": 33518,
+  "bytes": 32414,
   "status": "real",
-  "what": "Climb 8 (stockwhip icon)",
+  "what": "Climb 8 split face (whip icon): climb 8 at the top, descent 5 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -204,9 +204,9 @@
   "file": "cards/card-climb-9.webp",
   "width": 300,
   "height": 428,
-  "bytes": 33358,
+  "bytes": 32244,
   "status": "real",
-  "what": "Climb 9 (stockwhip icon)",
+  "what": "Climb 9 split face (whip icon): climb 9 at the top, descent 4 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -214,9 +214,9 @@
   "file": "cards/card-climb-10.webp",
   "width": 300,
   "height": 428,
-  "bytes": 33654,
+  "bytes": 32610,
   "status": "real",
-  "what": "Climb 10 (stockwhip icon)",
+  "what": "Climb 10 split face (whip icon): climb 10 at the top, descent 3 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -224,9 +224,9 @@
   "file": "cards/card-climb-11.webp",
   "width": 300,
   "height": 428,
-  "bytes": 32944,
+  "bytes": 31896,
   "status": "real",
-  "what": "Climb 11 (stockwhip icon)",
+  "what": "Climb 11 split face (whip icon): climb 11 at the top, descent 2 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -234,9 +234,9 @@
   "file": "cards/card-climb-12.webp",
   "width": 300,
   "height": 428,
-  "bytes": 33578,
+  "bytes": 31812,
   "status": "real",
-  "what": "Climb 12 (stockwhip icon)",
+  "what": "Climb 12 split face (whip icon): climb 12 at the top, descent 1 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -244,9 +244,9 @@
   "file": "cards/card-descent-1.webp",
   "width": 300,
   "height": 428,
-  "bytes": 35218,
+  "bytes": 34242,
   "status": "real",
-  "what": "Descent 1 (hat icon)",
+  "what": "Descent 1 split face (hat icon): climb 1 at the top, descent 12 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -254,9 +254,9 @@
   "file": "cards/card-descent-2.webp",
   "width": 300,
   "height": 428,
-  "bytes": 36050,
+  "bytes": 34160,
   "status": "real",
-  "what": "Descent 2 (hat icon)",
+  "what": "Descent 2 split face (hat icon): climb 2 at the top, descent 11 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -264,9 +264,9 @@
   "file": "cards/card-descent-3.webp",
   "width": 300,
   "height": 428,
-  "bytes": 35694,
+  "bytes": 35074,
   "status": "real",
-  "what": "Descent 3 (hat icon)",
+  "what": "Descent 3 split face (hat icon): climb 3 at the top, descent 10 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -274,9 +274,9 @@
   "file": "cards/card-descent-4.webp",
   "width": 300,
   "height": 428,
-  "bytes": 35384,
+  "bytes": 34524,
   "status": "real",
-  "what": "Descent 4 (hat icon)",
+  "what": "Descent 4 split face (hat icon): climb 4 at the top, descent 9 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -284,9 +284,9 @@
   "file": "cards/card-descent-5.webp",
   "width": 300,
   "height": 428,
-  "bytes": 36092,
+  "bytes": 34692,
   "status": "real",
-  "what": "Descent 5 (hat icon)",
+  "what": "Descent 5 split face (hat icon): climb 5 at the top, descent 8 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -294,9 +294,9 @@
   "file": "cards/card-descent-6.webp",
   "width": 300,
   "height": 428,
-  "bytes": 36164,
+  "bytes": 34426,
   "status": "real",
-  "what": "Descent 6 (hat icon)",
+  "what": "Descent 6 split face (hat icon): climb 6 at the top, descent 7 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -304,9 +304,9 @@
   "file": "cards/card-descent-7.webp",
   "width": 300,
   "height": 428,
-  "bytes": 35734,
+  "bytes": 34532,
   "status": "real",
-  "what": "Descent 7 (hat icon)",
+  "what": "Descent 7 split face (hat icon): climb 7 at the top, descent 6 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -314,9 +314,9 @@
   "file": "cards/card-descent-8.webp",
   "width": 300,
   "height": 428,
-  "bytes": 36184,
+  "bytes": 34644,
   "status": "real",
-  "what": "Descent 8 (hat icon)",
+  "what": "Descent 8 split face (hat icon): climb 8 at the top, descent 5 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -324,9 +324,9 @@
   "file": "cards/card-descent-9.webp",
   "width": 300,
   "height": 428,
-  "bytes": 36086,
+  "bytes": 34564,
   "status": "real",
-  "what": "Descent 9 (hat icon)",
+  "what": "Descent 9 split face (hat icon): climb 9 at the top, descent 4 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -334,9 +334,9 @@
   "file": "cards/card-descent-10.webp",
   "width": 300,
   "height": 428,
-  "bytes": 36720,
+  "bytes": 34952,
   "status": "real",
-  "what": "Descent 10 (hat icon)",
+  "what": "Descent 10 split face (hat icon): climb 10 at the top, descent 3 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -344,9 +344,9 @@
   "file": "cards/card-descent-11.webp",
   "width": 300,
   "height": 428,
-  "bytes": 35772,
+  "bytes": 34118,
   "status": "real",
-  "what": "Descent 11 (hat icon)",
+  "what": "Descent 11 split face (hat icon): climb 11 at the top, descent 2 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -354,9 +354,9 @@
   "file": "cards/card-descent-12.webp",
   "width": 300,
   "height": 428,
-  "bytes": 36394,
+  "bytes": 34182,
   "status": "real",
-  "what": "Descent 12 (hat icon)",
+  "what": "Descent 12 split face (hat icon): climb 12 at the top, descent 1 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -364,9 +364,9 @@
   "file": "cards/card-home-1.webp",
   "width": 300,
   "height": 428,
-  "bytes": 27952,
+  "bytes": 27680,
   "status": "real",
-  "what": "Home 1 (horseshoe icon)",
+  "what": "Home 1 split face (horseshoe icon): climb 1 at the top, descent 12 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -374,9 +374,9 @@
   "file": "cards/card-home-2.webp",
   "width": 300,
   "height": 428,
-  "bytes": 28750,
+  "bytes": 27590,
   "status": "real",
-  "what": "Home 2 (horseshoe icon)",
+  "what": "Home 2 split face (horseshoe icon): climb 2 at the top, descent 11 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -384,9 +384,9 @@
   "file": "cards/card-home-3.webp",
   "width": 300,
   "height": 428,
-  "bytes": 28840,
+  "bytes": 28366,
   "status": "real",
-  "what": "Home 3 (horseshoe icon)",
+  "what": "Home 3 split face (horseshoe icon): climb 3 at the top, descent 10 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -394,9 +394,9 @@
   "file": "cards/card-home-4.webp",
   "width": 300,
   "height": 428,
-  "bytes": 28556,
+  "bytes": 28762,
   "status": "real",
-  "what": "Home 4 (horseshoe icon)",
+  "what": "Home 4 split face (horseshoe icon): climb 4 at the top, descent 9 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -404,9 +404,9 @@
   "file": "cards/card-home-5.webp",
   "width": 300,
   "height": 428,
-  "bytes": 28620,
+  "bytes": 28610,
   "status": "real",
-  "what": "Home 5 (horseshoe icon)",
+  "what": "Home 5 split face (horseshoe icon): climb 5 at the top, descent 8 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -414,9 +414,9 @@
   "file": "cards/card-home-6.webp",
   "width": 300,
   "height": 428,
-  "bytes": 28658,
+  "bytes": 28172,
   "status": "real",
-  "what": "Home 6 (horseshoe icon)",
+  "what": "Home 6 split face (horseshoe icon): climb 6 at the top, descent 7 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -424,9 +424,9 @@
   "file": "cards/card-home-7.webp",
   "width": 300,
   "height": 428,
-  "bytes": 28198,
+  "bytes": 28240,
   "status": "real",
-  "what": "Home 7 (horseshoe icon)",
+  "what": "Home 7 split face (horseshoe icon): climb 7 at the top, descent 6 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -434,9 +434,9 @@
   "file": "cards/card-home-8.webp",
   "width": 300,
   "height": 428,
-  "bytes": 28562,
+  "bytes": 28356,
   "status": "real",
-  "what": "Home 8 (horseshoe icon)",
+  "what": "Home 8 split face (horseshoe icon): climb 8 at the top, descent 5 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -444,9 +444,9 @@
   "file": "cards/card-home-9.webp",
   "width": 300,
   "height": 428,
-  "bytes": 28692,
+  "bytes": 28318,
   "status": "real",
-  "what": "Home 9 (horseshoe icon)",
+  "what": "Home 9 split face (horseshoe icon): climb 9 at the top, descent 4 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -454,9 +454,9 @@
   "file": "cards/card-home-10.webp",
   "width": 300,
   "height": 428,
-  "bytes": 29206,
+  "bytes": 28648,
   "status": "real",
-  "what": "Home 10 (horseshoe icon)",
+  "what": "Home 10 split face (horseshoe icon): climb 10 at the top, descent 3 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -464,9 +464,9 @@
   "file": "cards/card-home-11.webp",
   "width": 300,
   "height": 428,
-  "bytes": 28328,
+  "bytes": 27750,
   "status": "real",
-  "what": "Home 11 (horseshoe icon)",
+  "what": "Home 11 split face (horseshoe icon): climb 11 at the top, descent 2 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -474,79 +474,69 @@
   "file": "cards/card-home-12.webp",
   "width": 300,
   "height": 428,
-  "bytes": 29028,
+  "bytes": 27732,
   "status": "real",
-  "what": "Home 12 (horseshoe icon)",
+  "what": "Home 12 split face (horseshoe icon): climb 12 at the top, descent 1 upside down at the bottom; upright as printed",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
-  "id": "card-back",
-  "file": "cards/card-back.webp",
-  "width": 300,
-  "height": 428,
-  "bytes": 41796,
-  "status": "real",
-  "what": "Card back (teal, galloping mob roundel)",
-  "source": "TTS/Snowy-River-Cards.png"
- },
- {
-  "id": "brumby-front",
-  "file": "cards/brumby-front.webp",
-  "width": 300,
-  "height": 428,
-  "bytes": 47348,
-  "status": "real",
-  "what": "Brumby card front (+2)",
-  "source": "TTS/Snowy-River-Cards.png"
- },
- {
-  "id": "brumby-back",
-  "file": "cards/brumby-back.webp",
-  "width": 300,
-  "height": 428,
-  "bytes": 22488,
-  "status": "real",
-  "what": "Brumby card back",
-  "source": "TTS/Snowy-River-Cards.png"
- },
- {
-  "id": "chase",
-  "file": "cards/chase.webp",
-  "width": 300,
-  "height": 428,
-  "bytes": 31638,
-  "status": "real",
-  "what": "Chase choice card (red, rider plunging down the slope)",
-  "source": "TTS/Snowy-River-Cards.png"
- },
- {
-  "id": "watch",
-  "file": "cards/watch.webp",
-  "width": 300,
-  "height": 428,
-  "bytes": 27578,
-  "status": "real",
-  "what": "Watch choice card (grey, stockman on the ledge with wombat)",
-  "source": "TTS/Snowy-River-Cards.png"
- },
- {
-  "id": "mountain-7",
-  "file": "cards/mountain-7.webp",
+  "id": "mountain-up",
+  "file": "cards/mountain-up.webp",
   "width": 480,
   "height": 336,
-  "bytes": 70942,
+  "bytes": 51478,
   "status": "real",
-  "what": "Mountain card, 0-7 side (2-4 players), landscape, cream",
+  "what": "Mountain card, climb side (circles 1-6, Escape trumps), landscape",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
-  "id": "mountain-6",
-  "file": "cards/mountain-6.webp",
+  "id": "mountain-down",
+  "file": "cards/mountain-down.webp",
   "width": 480,
   "height": 336,
-  "bytes": 71216,
+  "bytes": 51618,
   "status": "real",
-  "what": "Mountain card, 0-6 side (5 players), landscape, pale blue",
+  "what": "Mountain card, descent side (Home trumps), landscape",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "brumby-plus2",
+  "file": "cards/brumby-plus2.webp",
+  "width": 480,
+  "height": 336,
+  "bytes": 62698,
+  "status": "real",
+  "what": "Brumby card +2, landscape, number upright",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "brumby-plus1",
+  "file": "cards/brumby-plus1.webp",
+  "width": 480,
+  "height": 336,
+  "bytes": 62104,
+  "status": "real",
+  "what": "Brumby card +1, landscape, number upright",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "brumby-flint",
+  "file": "cards/brumby-flint.webp",
+  "width": 480,
+  "height": 336,
+  "bytes": 61822,
+  "status": "real",
+  "what": "Brumby card -1 (Flint stones), landscape, number upright",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "brumby-wombat",
+  "file": "cards/brumby-wombat.webp",
+  "width": 480,
+  "height": 336,
+  "bytes": 62326,
+  "status": "real",
+  "what": "Brumby card -2 (Wombat hole), landscape, number upright",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -554,10 +544,60 @@
   "file": "cards/colt.webp",
   "width": 480,
   "height": 336,
-  "bytes": 38608,
+  "bytes": 45442,
   "status": "real",
-  "what": "The Colt (prize horse with rosette), landscape",
+  "what": "The Colt +4 (prize horse), landscape, number upright",
   "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "brumby-back",
+  "file": "cards/brumby-back.webp",
+  "width": 480,
+  "height": 336,
+  "bytes": 67162,
+  "status": "real",
+  "what": "Brumby deck back, landscape",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "card-back",
+  "file": "cards/card-back.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 40910,
+  "status": "real",
+  "what": "Playing card back (rearing horse and mob)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "watch",
+  "file": "cards/watch.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 28032,
+  "status": "real",
+  "what": "Watch choice card (man, horse and bear on a ridge)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "chase-3",
+  "file": "cards/chase-3.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 30144,
+  "status": "real",
+  "what": "Chase choice card, -3 (2 players)",
+  "source": "TTS/Snowy-River-Cards.png"
+ },
+ {
+  "id": "chase-2",
+  "file": "cards/chase-2.webp",
+  "width": 300,
+  "height": 428,
+  "bytes": 30034,
+  "status": "real",
+  "what": "Chase choice card, -2 (3-4 players): chase-3 with the number disc repainted (cream fill, -2 in Arial Bold); see art-audit-v2",
+  "source": "TTS/Snowy-River-Cards.png (composed, make-runtime-art-v2.py)"
  },
  {
   "id": "icon-escape",
