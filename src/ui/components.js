@@ -1,22 +1,23 @@
-// components.js - HTML string builders for the game screen: the phase banner, seats (with climb and
-// descent piles), the Mountain card with the mob marker, the Colt with its Brumby cards, the current
-// trick, the hand, the summit decision, the reveal, the score pad, the log and the overlays
-// (pass-and-play cover, the reckoning at the end of a hand, the end of the game). Pure string functions
-// of a view-model `vm` built in main.js; no DOM access, no game logic: every number comes from the
-// board (events) or the engine, and "who is at the heels" is the engine's own heelsOf().
+// components.js - HTML string builders for the game screen: the phase banner, seats (one trick pile, the
+// Brumby cards a chaser has kept), the Mountain card with the mob marker, the Brumby row, the current trick,
+// the hand (turned round after the summit), the summit decision, the reveal, the score pad, the log and the
+// overlays (the turn at the summit, the pass-and-play cover, the reckoning at the end of a hand, the end of
+// the game). Pure string functions of a view-model `vm` built in main.js; no DOM access, no game logic:
+// every number comes from the board (events) or the engine.
 //
-// vm = { board, names, types, humanSeats, me, shown, hand, reasons, hints, myTurn, view,
+// vm = { board, names, types, humanSeats, me, shown, hand, half, reasons, hints, myTurn, view,
 //        ui, log, state (read-only: handLog, result, params), frame (the playback frame or null) }
 
-import { SUIT_NAMES, CONSTANTS, cardSuit, cardName, isCardPhase, heelsOf, mobValueFor } from '../engine/index.js';
-import { esc, img, cardImg, cardBackImg, badgeImg, avatarId } from './assets.js';
-import { turnPrompt, waitingText, winnerBanner, tiebreakText, phaseText, phaseParts, stakesText, outcomeText, bannerText, stepCallout, rankRangeText, phaseBest, descentGoal } from './text.js';
+import { SUIT_NAMES, cardSuit, cardName, isCardPhase, brumbyValue, brumbyName } from '../engine/index.js';
+import { esc, img, cardImg, cardBackImg, brumbyImg, brumbyBackImg, choiceArt, badgeImg, avatarId } from './assets.js';
+import { turnPrompt, waitingText, tiebreakText, phaseText, phaseParts, phaseNote, stakesText, bannerText, stepCallout, descentGoal, winnerBanner, rowSentence } from './text.js';
 
 export { esc };
 
 const youName = (n) => n === 'You';
 const plural = (k, one, many) => `${k} ${k === 1 ? one : many}`;
 const signed = (x) => (x > 0 ? `+${x}` : `${x}`);
+const sum = (ids) => ids.reduce((a, id) => a + brumbyValue(id), 0);
 
 export function typeLabel(type) {
   if (type === 'human') return 'Human';
@@ -32,36 +33,18 @@ function avatar(s, cls = 'seat__avatar') {
   return img(avatarId(s), { cls, alt: '', label: '', w: 96, h: 96, fallback: `<span class="${esc(cls)} avatar-chip avatar-chip--${(s % 5) + 1}" aria-hidden="true">${s + 1}</span>` });
 }
 
-/** The seat at the mob's heels right now (the engine's tie rule), or null outside the descent. */
-export function heelsSeat(b) {
-  if (b.phase !== 'descent' || !b.descentTricks.some((d) => d > 0)) return null;
-  return heelsOf(b.descentTricks, b.lastDescentWin).seat;
-}
-
-/** The seats in the order of the heels race: the first is at the heels now (the engine's tie rule), then the next, and so on. */
-export function standing(b, take = 2) {
-  const out = [];
-  let pool = b.descentTricks.map((_, s) => s);
-  while (out.length < take && pool.length) {
-    const h = heelsOf(pool.map((s) => b.descentTricks[s]), pool.map((s) => b.lastDescentWin[s]));
-    const seat = pool[h.seat];
-    out.push(seat);
-    pool = pool.filter((s) => s !== seat);
-  }
-  return out;
-}
-
-/** The seat's summit card as the table may show it: face down before the reveal (R12.5). */
+/** The seat's summit card as the table may show it: face down before the reveal. */
 function choiceChip(vm, s) {
   const b = vm.board;
+  const small = (c) => img(choiceArt(c, b.chaseCost), { cls: 'schip__card', alt: '', label: '', w: 24, h: 34, fallback: '' });
   if (b.revealed && b.choices[s]) {
     const c = b.choices[s];
-    return `<span class="schip schip--choice schip--${c}" title="${c === 'chase' ? 'Chose Chase' : 'Chose Watch'}">${img(c, { cls: 'schip__card', alt: '', label: '', w: 24, h: 34, fallback: '' })}<b>${c === 'chase' ? 'Chase' : 'Watch'}</b></span>`;
+    return `<span class="schip schip--choice schip--${c}" title="${c === 'chase' ? `Chose Chase (pays ${b.chaseCost})` : 'Chose Watch'}">${small(c)}<b>${c === 'chase' ? 'Chase' : 'Watch'}</b>${c === 'chase' ? `<i>-${b.chaseCost}</i>` : ''}</span>`;
   }
   if (b.phase === 'summit') {
     // The viewer's own choice may be shown to the viewer only (from the view, never the board).
     const own = vm.view && vm.view.seat === s && vm.view.choices[s];
-    if (own) return `<span class="schip schip--choice schip--own" title="Your choice, still face down to everyone else">${img(own, { cls: 'schip__card', alt: '', label: '', w: 24, h: 34, fallback: '' })}<b>${own === 'chase' ? 'Chase' : 'Watch'}</b><i>face down</i></span>`;
+    if (own) return `<span class="schip schip--choice schip--own" title="Your choice, still face down to everyone else">${small(own)}<b>${own === 'chase' ? 'Chase' : 'Watch'}</b><i>face down</i></span>`;
     return `<span class="schip schip--choice" title="Summit choice, face down until everyone has chosen">${cardBackImg('schip__card')}<b>${b.chosen[s] ? 'Chosen' : 'Choosing'}</b>${b.chosen[s] ? '<i>face down</i>' : ''}</span>`;
   }
   // The same row is kept (empty) through the climb, so a seat is the same height before, at and after the summit.
@@ -72,34 +55,44 @@ function choiceChip(vm, s) {
 // ---------- seats ----------
 
 const MINI_MAX = 14;
-function pileHtml(kind, count, bump, heels = false) {
-  const minis = Array.from({ length: Math.min(count, MINI_MAX) }, () => `<i class="mini mini--${kind === 'climb' ? 'up' : 'side'}"></i>`).join('');
-  const title = kind === 'climb' ? 'Climb tricks won this hand: 1 point each if kept' : "Descent tricks won this hand: the most puts you at the mob's heels";
-  return `<span class="pile pile--${kind}${bump ? ' fx-bump' : ''}${heels ? ' is-heels' : ''}" title="${esc(title)}" aria-label="${plural(count, `${kind} trick`, `${kind} tricks`)}"><span class="pile__minis" aria-hidden="true">${minis}</span><b>${count}</b><i>${kind}</i></span>`;
+/** One pile of tricks (R4.7): 1 point each, up or down. */
+function pileHtml(count, bump, up, down) {
+  const minis = Array.from({ length: Math.min(count, MINI_MAX) }, () => '<i class="mini"></i>').join('');
+  const title = `Tricks won this hand: ${up} on the climb and ${down} on the descent. Every trick is 1 point.`;
+  return `<span class="pile${bump ? ' fx-bump' : ''}" title="${esc(title)}" aria-label="${plural(count, 'trick', 'tricks')} won this hand"><span class="pile__minis" aria-hidden="true">${minis}</span><b>${count}</b><i>${count === 1 ? 'trick' : 'tricks'}</i></span>`;
+}
+
+/** The Brumby cards a chaser has kept this hand, face up, with what they are worth. */
+function keptHtml(vm, s) {
+  const b = vm.board;
+  if (!(b.revealed && b.choices[s] === 'chase' && b.phase !== 'over')) return '';
+  const k = b.kept[s];
+  const bump = b.fx && b.fx.prize && b.fx.prize.seat === s && b.fx.prize.to === 'kept';
+  const fan = k.length ? `<span class="kept__fan" style="--k:${k.length}">${k.map((id, i) => `<span class="kept__card${bump && i === k.length - 1 ? ' is-new' : ''}" style="--i:${i}" title="${esc(brumbyName(id))}">${brumbyImg(id, 'kept__img')}</span>`).join('')}</span><b class="kept__sum">${signed(sum(k))}</b>` : '<span class="kept__none">none yet</span>';
+  return `<div class="seat__kept${bump ? ' fx-bump' : ''}" aria-label="Brumby cards kept: ${k.length ? esc(k.map(brumbyName).join(', ')) : 'none yet'}"><span class="kept__label">Kept</span>${fan}</div>`;
 }
 
 export function seatHtml(vm, s, area) {
   const b = vm.board;
   const name = vm.names[s];
   const toAct = b.toAct === s && b.phase !== 'over';
-  const heels = heelsSeat(b) === s;
   const tags = [];
-  // The heels tag comes first, directly above the descent pile (which is on the left and rings in the same colour).
-  if (heels) tags.push(`<span class="tag tag--heels" title="Most descent tricks so far: at the mob's heels">${badgeImg('home', 'tag__badge')}At the heels</span>`);
   if (b.phase !== 'over' && b.dealer === s) tags.push('<span class="tag tag--dealer" title="Dealer this hand">Dealer</span>');
   if (toAct) tags.push(`<span class="tag tag--turn">${b.phase === 'summit' ? 'Choosing' : (vm.types[s] === 'human' && vm.humanSeats.length === 1 ? 'Your turn' : 'To play')}</span>`);
   const cards = b.handCounts[s];
   const winning = b.trick && b.trick.winner === s;
-  const wonNow = b.fx && b.fx.won === s ? b.fx.phase : null;
-  return `<article class="seat area-${area}${toAct ? ' is-turn' : ''}${winning ? ' is-winning' : ''}${heels ? ' is-heels' : ''}" data-seat="${s}" aria-label="${esc(name)}">
+  const wonNow = !!(b.fx && b.fx.won === s);
+  const tricks = b.climbTricks[s] + b.descentTricks[s];
+  return `<article class="seat area-${area}${toAct ? ' is-turn' : ''}${winning ? ' is-winning' : ''}" data-seat="${s}" aria-label="${esc(name)}">
     <header class="seat__head">
       ${avatar(s)}
       <div class="seat__id"><b class="seat__name">${esc(name)}</b>${badge(vm, s)}<span class="seat__hand" title="Cards in hand" aria-label="${plural(cards, 'card', 'cards')} in hand"><b class="seat__cardsnum" data-cards="${s}">${cards}</b> ${cards === 1 ? 'card' : 'cards'}</span></div>
     </header>
     ${tags.length ? `<div class="seat__tags">${tags.join('')}</div>` : ''}
-    <div class="seat__piles">${pileHtml('descent', b.descentTricks[s], wonNow === 'descent', heels)}${pileHtml('climb', b.climbTricks[s], wonNow === 'climb')}${choiceChip(vm, s)}</div>
+    <div class="seat__piles">${pileHtml(tricks, wonNow, b.climbTricks[s], b.descentTricks[s])}${choiceChip(vm, s)}</div>
+    ${keptHtml(vm, s)}
     <footer class="seat__score">
-      <span class="total" title="Total over finished hands; mobs brought home break a tie">Total <b>${b.totals[s]}</b></span>${b.mobsHome[s] ? `<span class="plus" title="Mobs brought home: the tiebreak">${badgeImg('home', 'tag__badge')}${b.mobsHome[s]} home</span>` : ''}
+      <span class="total" title="Total over finished hands">Total <b>${b.totals[s]}</b></span>
     </footer>
   </article>`;
 }
@@ -118,7 +111,7 @@ export function tableHtml(vm) {
     <div class="opps" data-opp="${n - 1}">${seats.slice(1).join('')}</div>
     <div class="stage">
       <div class="stage__mountain">${mountainHtml(vm)}</div>
-      <div class="stage__colt">${coltHtml(vm)}</div>
+      <div class="stage__row">${rowHtml(vm)}</div>
       <div class="stage__trick">${trickHtml(vm)}</div>
     </div>
     ${seats[0]}
@@ -134,10 +127,10 @@ export function statusHtml(vm) {
   if (b.phase === 'over') head = '<div class="phasebar phasebar--over" role="status"><span class="phasebar__name">Game over</span></div>';
   else {
     const p = phaseParts(b.phase);
-    const icon = b.phase === 'climb' ? badgeImg('climb', 'phasebar__badge') : b.phase === 'descent' ? badgeImg('descent', 'phasebar__badge') : img('mob-marker', { cls: 'phasebar__badge phasebar__badge--mob', alt: '', label: '', w: 36, h: 36, fallback: '' });
-    const meta = `Hand ${Math.min(b.handNo + 1, b.handsPerGame)} of ${b.handsPerGame} &middot; Trick ${b.trickNo + 1} &middot; Dealer: ${esc(names[b.dealer])}`;
-    const best = phaseBest(b.phase, CONSTANTS.RANK_MIN, CONSTANTS.RANK_MAX);
-    head = `<div class="phasebar phasebar--${esc(b.phase)}" role="status" aria-label="${esc(phaseText(b.phase))}">${icon}<span class="phasebar__name">${esc(p.name)}</span>${p.rule ? `<span class="phasebar__rule">${esc(p.rule)}${best ? ` <em class="phasebar__best">(${esc(best)})</em>` : ''}</span>` : ''}<strong class="phasebar__range">${esc(rankRangeText(CONSTANTS.RANK_MIN, CONSTANTS.RANK_MAX))}</strong><small class="phasebar__meta">${meta}</small></div>`;
+    const icon = b.phase === 'climb' ? badgeImg('escape', 'phasebar__badge') : b.phase === 'descent' ? badgeImg('home', 'phasebar__badge') : img('mob-marker', { cls: 'phasebar__badge phasebar__badge--mob', alt: '', label: '', w: 36, h: 36, fallback: '' });
+    const half = b.phase === 'climb' ? `Climb trick ${Math.min(b.marker + 1, b.climbTricksPerHand)} of ${b.climbTricksPerHand}` : b.phase === 'descent' ? `Descent trick ${Math.min((b.rowNext || 0) + 1, b.row.length)} of ${b.row.length}` : 'Six tricks up, six down';
+    const meta = `Hand ${Math.min(b.handNo + 1, b.handsPerGame)} of ${b.handsPerGame} &middot; ${half} &middot; Dealer: ${esc(names[b.dealer])}`;
+    head = `<div class="phasebar phasebar--${esc(b.phase)}" role="status" aria-label="${esc(phaseText(b.phase))}">${icon}<span class="phasebar__name">${esc(p.name)}</span>${p.rule ? `<span class="phasebar__rule">${esc(p.rule)}</span>` : ''}<strong class="phasebar__range">${esc(phaseNote(b.phase, b.trump))}</strong><small class="phasebar__meta">${meta}</small></div>`;
   }
   const g = b.phase === 'descent' ? descentGoal(b, names, vm.humanSeats) : null;
   const goal = g ? `<div class="goal" role="note"><p class="goal__main">${esc(g.main)}</p><p class="goal__extra">${esc(g.extra)}</p>${g.personal.map((x) => `<p class="goal__me goal__me--${x.choice}">${esc(x.text)}</p>`).join('')}</div>` : '';
@@ -151,60 +144,88 @@ export function statusHtml(vm) {
 // ---------- the Mountain card with the mob marker ----------
 
 /**
- * Where each step's circle is printed on the 480 x 336 art, in px (measured on assets/cards/mountain-7.webp
- * and mountain-6.webp, step 0 at the bottom). The two sides differ, so each has its own table.
+ * Where each step's circle is printed on the 480 x 336 climb side (measured on assets/cards/mountain-up.webp):
+ * step 0 is the foot of the road, steps 1 to 6 the six numbered circles. The marker stands in the lower half of its circle.
+ * The descent side has no circles, so no marker.
  */
 const MOUNTAIN_ART = { w: 480, h: 336 };
 export const MOUNTAIN_STEPS = {
-  '0-7': [[132, 310], [186, 268], [188, 212], [124, 192], [118, 138], [174, 120], [186, 74], [228, 48]],
-  '0-6': [[180, 308], [224, 262], [200, 208], [138, 162], [152, 124], [192, 92], [226, 54]],
+  climb: [[40, 322], [97, 296], [311, 232], [227, 201], [96, 158], [177, 132], [320, 87]],
 };
 
-/** [left %, top %] of a step on the Mountain card. */
+/** [left %, top %] of a step on the climb side of the Mountain card. */
 export function stepPosition(side, step) {
-  const pts = MOUNTAIN_STEPS[side] || MOUNTAIN_STEPS['0-7'];
+  const pts = MOUNTAIN_STEPS[side] || MOUNTAIN_STEPS.climb;
   const p = pts[Math.max(0, Math.min(pts.length - 1, step))];
   return [+(p[0] / MOUNTAIN_ART.w * 100).toFixed(2), +(p[1] / MOUNTAIN_ART.h * 100).toFixed(2)];
 }
 
-/** The Mountain card (0-7, or 0-6 for five players) with the marker on its step and the callout of the step just taken. */
+/** The Mountain card: the climb side with the marker on its step; turned over at the summit to the descent side. */
 export function mountainHtml(vm) {
   const b = vm.board;
-  const side = b.mountainSide;
-  const [left, top] = stepPosition(side, b.marker);
-  const fx = b.fx && b.fx.marker ? b.fx.marker : null;
-  const call = stepCallout(fx);
-  const callout = call ? `<span class="mountain__callout${call.off ? ' is-off' : ''}" style="left:${left}%;top:${top}%" title="${esc(call.title)}">${esc(call.text)}</span>` : '';
-  const marker = `<span class="mountain__marker" data-side="${esc(side)}" data-step="${b.marker}" style="left:${left}%;top:${top}%">${img('mob-marker', { cls: 'mountain__piece', alt: 'The mob', label: 'Mob', w: 64, h: 64 })}</span>`;
-  let fxText = '';
-  if (fx) fxText = `${call.off ? 'Off-suit card: ' : ''}the mob climbs${fx.steps > 1 ? ` ${fx.steps} steps` : ' a step'}${fx.offSuit ? ` (1 + ${fx.offSuit} off-suit)` : ''}${fx.step === fx.of && fx.summit ? ': the summit!' : ''}`;
-  const heels = heelsSeat(b);
-  let line = '';
-  let standingLine = '';
-  if (b.phase === 'descent') {
-    line = heels !== null ? `At the mob's heels: <b>${esc(vm.names[heels])}</b> with ${plural(b.descentTricks[heels], 'descent trick', 'descent tricks')}` : "At the mob's heels: nobody yet (the most descent tricks)";
-    const order = heels !== null ? standing(b, 2) : [];
-    if (order.length === 2 && b.descentTricks[order[1]] > 0) standingLine = `Leading: ${esc(vm.names[order[0]])} (${b.descentTricks[order[0]]}), next: ${esc(vm.names[order[1]])} (${b.descentTricks[order[1]]})`;
+  const side = b.handsTurned ? 'descent' : 'climb';
+  const trumpName = SUIT_NAMES[b.trump];
+  let card = '';
+  if (side === 'climb') {
+    const [left, top] = stepPosition('climb', b.marker);
+    const fx = b.fx && b.fx.marker ? b.fx.marker : null;
+    const call = stepCallout(fx);
+    const callout = call ? `<span class="mountain__callout" style="left:${left}%;top:${top}%" title="${esc(call.title)}">${esc(call.text)}</span>` : '';
+    const marker = `<span class="mountain__marker" data-side="${side}" data-step="${b.marker}" style="left:${left}%;top:${top}%">${img('mob-marker', { cls: 'mountain__piece', alt: 'The mob', label: 'Mob', w: 64, h: 64 })}</span>`;
+    card = `${img('mountain-up', { cls: 'mountain__img', alt: `Mountain card, climb side: Escape is trumps`, label: 'Mountain, climb side', w: 480, h: 336 })}${marker}${callout}`;
+  } else {
+    card = img('mountain-down', { cls: 'mountain__img', alt: 'Mountain card, descent side: Home is trumps', label: 'Mountain, descent side', w: 480, h: 336 });
   }
-  return `<div class="mountain" data-side="${esc(side)}">
-    <div class="mountain__card">${img(`mountain-${side === '0-6' ? 6 : 7}`, { cls: 'mountain__img', alt: `Mountain card, steps ${side}`, label: `Mountain ${side}`, w: 480, h: 336 })}${marker}${callout}</div>
-    <p class="mountain__title" aria-live="polite">The mob is on step <b data-marker>${b.marker}</b> of ${b.summitStep}${line ? '' : ` &middot; the summit is step ${b.summitStep}`}</p>
+  const title = side === 'climb'
+    ? `The climb: <b data-marker>${b.marker}</b> of ${b.climbTricksPerHand} tricks played`
+    : `The descent: <b data-marker>${Math.min(b.rowNext === null ? b.row.length : b.rowNext, 6)}</b> of 6 tricks played`;
+  const fxText = b.fx && b.fx.marker ? (b.fx.marker.summit ? 'The mob reaches the summit!' : `The mob climbs to step ${b.fx.marker.to}`) : '';
+  const flip = b.banner && b.banner.kind === 'turn' ? 1 : 0; // the Mountain turns over once, at the summit
+  return `<div class="mountain" data-side="${side}" data-flip="${flip}">
+    <div class="mountain__card">${card}</div>
+    <p class="mountain__title" aria-live="polite">${title}</p>
+    <p class="mountain__trump" data-trump="${esc(b.trump)}">${badgeImg(b.trump, 'mountain__badge')}<span><b>${esc(trumpName)}</b> is trumps ${side === 'climb' ? 'going up' : 'going down'}</span></p>
     <p class="mountain__fx" aria-live="polite">${esc(fxText)}</p>
-    ${line ? `<p class="mountain__heels">${line}</p>` : ''}${standingLine ? `<p class="mountain__standing">${standingLine}</p>` : ''}
   </div>`;
 }
 
-/** The Colt card with its Brumby cards tucked under it, and what the mob is worth. */
-export function coltHtml(vm) {
+// ---------- the Brumby row: the mob laid out below the summit ----------
+
+/** The six Brumby cards of this hand, face up from the summit; the next card to be won is lit; taken slots show who has it. */
+export function rowHtml(vm) {
   const b = vm.board;
-  const k = b.brumbies;
-  const fan = Array.from({ length: k }, (_, i) => `<span class="brumby" style="--i:${i}">${img('brumby-front', { cls: 'brumby__img', alt: '', label: '+2', w: 84, h: 120, fallback: '<span class="brumby__img asset-chip">+2</span>' })}<i class="brumby__chip">+2</i></span>`).join('');
-  const next = mobValueFor(vm.state.params, k);
-  const nextLine = next !== b.mob ? `<small class="mob__next">Next hand: ${next}</small>` : '';
-  const sum = `Colt ${vm.state.params.mobBase} + ${plural(k, 'Brumby card', 'Brumby cards')} x ${vm.state.params.brumbyValue}`;
-  return `<div class="colt" aria-label="The mob: the Colt card and ${plural(k, 'Brumby card', 'Brumby cards')}, worth ${b.mob}">
-    <div class="colt__pile" style="--k:${k}">${fan}${img('colt', { cls: 'colt__img', alt: 'The Colt card', label: 'Colt', w: 480, h: 336 })}</div>
-    <p class="mob"><span class="mob__label">The mob is worth</span> <b class="mob__value" data-mob>${b.mob}</b><small class="mob__sum">${esc(sum)}</small>${nextLine}</p>
+  const dealt = b.row.length > 0;
+  const slots = Array.from({ length: b.climbTricksPerHand }, (_, i) => {
+    if (!dealt) return `<li class="rslot rslot--down" aria-label="Brumby card ${i + 1}, face down in the deck"><span class="rslot__n">${i + 1}</span>${brumbyBackImg('rslot__img')}</li>`;
+    const id = b.row[i];
+    if (id) {
+      const next = b.rowNext === i && (b.phase === 'descent' || b.phase === 'summit');
+      const fresh = next && !!((b.fx && b.fx.prize) || (b.banner && b.banner.kind === 'descent'));
+      return `<li class="rslot${next ? ' is-next' : ''}${fresh ? ' is-new' : ''}${id === 'colt' ? ' is-colt' : ''}" data-pos="${i + 1}" aria-label="Brumby card ${i + 1}: ${esc(brumbyName(id))}${next ? ', the prize for the next trick' : ''}"><span class="rslot__n">${i + 1}</span>${brumbyImg(id, 'rslot__img')}</li>`;
+    }
+    const t = b.rowTaken[i];
+    const who = t ? vm.names[t.seat] : '';
+    const what = b.rowDealt[i] ? brumbyName(b.rowDealt[i]) : 'Brumby card';
+    const gone = t && t.to === 'kept'
+      ? `<span class="rslot__gone rslot__gone--kept" data-seat="${t.seat}">${avatar(t.seat, 'rslot__avatar')}<i>kept</i></span>`
+      : '<span class="rslot__gone rslot__gone--off"><b aria-hidden="true">&times;</b><i>off</i></span>';
+    return `<li class="rslot is-taken" data-pos="${i + 1}" title="${esc(t ? `${what}: ${t.to === 'kept' ? `kept by ${who}` : `sent off (${who} watched)`}` : '')}" aria-label="Brumby card ${i + 1} taken: ${esc(t ? (t.to === 'kept' ? `kept by ${who}` : 'sent off') : '')}"><span class="rslot__n">${i + 1}</span>${gone}</li>`;
+  }).join('');
+  const total = sum(b.rowDealt);
+  const left = sum(b.row.filter(Boolean));
+  const taken = b.row.filter((x) => x === null).length;
+  let line;
+  if (!dealt) line = 'The mob is turned up at the summit: one Brumby card for each descent trick.';
+  else if (b.phase === 'summit') line = `The row is worth ${signed(total)} in all.${b.rowDealt.includes('colt') ? ' The Colt is in it.' : ''}`;
+  else line = taken >= b.row.length ? `All six taken. The row was worth ${signed(total)}.` : `Row worth ${signed(total)}; ${signed(left)} still to win.`;
+  const discard = b.discard.length
+    ? `<details class="row__discard" data-panel="discard"${vm.ui.panels.discard ? ' open' : ''}><summary>Discard <b>${b.discard.length}</b></summary><span class="row__thumbs">${b.discard.map((id) => `<span class="row__thumb" title="${esc(brumbyName(id))}">${brumbyImg(id, 'row__thumbimg')}</span>`).join('')}</span></details>`
+    : '<span class="row__pile">Discard <b>0</b></span>';
+  return `<div class="row" aria-label="The Brumby row">
+    <p class="row__title">The mob <small class="row__cost">Chase costs ${b.chaseCost}</small></p>
+    <ol class="row__slots${dealt ? '' : ' is-down'}">${slots}</ol>
+    <p class="row__line" id="row-line">${esc(line)}</p>
+    <div class="row__piles"><span class="row__pile">Deck <b>${b.deckCount}</b></span>${discard}</div>
   </div>`;
 }
 
@@ -216,6 +237,7 @@ export function trickHtml(vm) {
   const t = b.trick;
   const startSeat = t ? t.leader : (b.toAct !== null ? b.toAct : 0);
   const order = t ? t.seats : Array.from({ length: b.n }, (_, k) => (startSeat + k) % b.n);
+  const turned = t ? t.half === 'descent' : b.handsTurned;
   const slots = order.map((s) => {
     const idx = t ? t.plays.findIndex((x) => x.seat === s) : -1;
     const p = idx >= 0 ? t.plays[idx] : null;
@@ -223,24 +245,28 @@ export function trickHtml(vm) {
     const win = t.winner === s;
     const tags = [];
     if (idx === 0) tags.push('led');
-    if (p.offSuit) tags.push('off-suit');
+    if (p.trump && p.offSuit) tags.push('trumps');
+    else if (p.trump) tags.push('trump');
+    else if (p.offSuit) tags.push('off-suit');
     if (win) tags.push('wins');
-    const offTitle = t.phase === 'climb' ? 'Off-suit: it cannot win, and the mob climbs a step' : 'Off-suit: it cannot win this trick';
-    return `<li class="tplay${win ? ' is-winner' : ''}${p.offSuit ? ' is-offsuit' : ''}${t.winner !== null && !win ? ' is-lost' : ''}"><span class="tplay__card">${cardImg(p.card, { alt: cardName(p.card) })}</span><span class="tplay__who">${esc(names[s])}</span><span class="tplay__tags">${tags.map((x) => `<i class="mark mark--${x}"${x === 'off-suit' ? ` title="${offTitle}"` : ''}>${x}</i>`).join('')}</span></li>`;
+    const titles = { 'off-suit': 'Off-suit: it cannot win this trick', trumps: 'A trump played on another suit: it beats every card of the suit led', trump: 'A trump card' };
+    return `<li class="tplay${win ? ' is-winner' : ''}${p.offSuit && !p.trump ? ' is-offsuit' : ''}${t.winner !== null && !win ? ' is-lost' : ''}"><span class="tplay__card">${cardImg(p.card, { alt: cardName(p.card, t.half), turned })}</span><span class="tplay__who">${esc(names[s])}</span><span class="tplay__tags">${tags.map((x) => `<i class="mark mark--${x}"${titles[x] ? ` title="${titles[x]}"` : ''}>${x}</i>`).join('')}</span></li>`;
   }).join('');
+  const halfNo = t ? t.halfTrickNo : (b.phase === 'descent' ? (b.rowNext || 0) + 1 : b.marker + 1);
+  const halfName = t ? (t.half === 'descent' ? 'Descent' : 'Climb') : (b.phase === 'descent' ? 'Descent' : 'Climb');
   let title;
-  if (!t) title = `Trick ${b.trickNo + 1}`;
-  else if (t.ledSuit) title = `Trick ${t.n} &middot; <span class="led led--${t.ledSuit}">${badgeImg(t.ledSuit, 'led__badge')}${esc(`${SUIT_NAMES[t.ledSuit]} led`)}</span>`;
-  else title = `Trick ${t.n}`;
+  if (b.phase === 'summit') title = 'At the summit';
+  else if (t && t.ledSuit) title = `${halfName} trick ${halfNo} &middot; <span class="led led--${t.ledSuit}">${badgeImg(t.ledSuit, 'led__badge')}${esc(`${SUIT_NAMES[t.ledSuit]} led`)}</span>`;
+  else title = `${halfName} trick ${Math.min(halfNo, 6)}`;
   let banner = b.banner && b.banner.kind === 'trick' ? b.banner : null;
-  if (!banner && t && t.done) banner = { winner: t.winner, card: t.winningCard, phase: t.phase };
+  if (!banner && t && t.done) banner = { winner: t.winner, card: t.winningCard, phase: t.half, byTrump: t.byTrump };
   let msg = '';
   if (banner) msg = winnerBanner(banner, names);
-  else if (b.phase === 'summit') msg = 'At the summit: everyone chooses Chase or Watch in secret.';
+  else if (b.phase === 'summit') msg = 'Everyone chooses Chase or Watch in secret.';
   else if (b.phase === 'over') msg = '';
   else if (!t) msg = b.toAct !== null ? `${names[b.toAct]} ${youName(names[b.toAct]) ? 'lead' : 'leads'} the next trick.` : '';
   if (b.phase === 'over') return '<div class="trick"><p class="trick__title">Game over</p></div>';
-  return `<div class="trick trick--${esc(t ? t.phase : b.phase)}"><p class="trick__title">${title}</p><ol class="tplays">${slots}</ol><p class="trick__msg${banner ? ' is-banner' : ''}" id="trick-msg">${esc(msg)}</p></div>`;
+  return `<div class="trick trick--${esc(t ? t.half : b.phase)}"><p class="trick__title">${title}</p><ol class="tplays">${slots}</ol><p class="trick__msg${banner ? ' is-banner' : ''}" id="trick-msg">${esc(msg)}</p></div>`;
 }
 
 // ---------- the hand ----------
@@ -249,23 +275,27 @@ export function handHtml(vm) {
   const hand = vm.hand;
   if (!hand) return '';
   const playing = vm.myTurn && isCardPhase(vm.state.phase);
+  const turned = vm.board.handsTurned;
+  const half = vm.half;
   const items = hand.map((card, i) => {
     const reason = vm.reasons.get(card) || null;
     const hint = vm.hints.get(card) || null;
     const legal = playing && !reason;
     const suit = cardSuit(card);
     const cls = ['card', `card--${suit}`];
+    if (suit === vm.board.trump) cls.push('is-trump');
     if (!playing) cls.push('is-wait');
     else if (legal) cls.push('is-legal'); else cls.push('is-blocked');
     if (i === 0 || cardSuit(hand[i - 1]) !== suit) cls.push('is-first');
     if (vm.ui.selected === card) cls.push('is-selected');
     let mark = '';
     if (legal && hint && hint.kind === 'follow') mark = `<span class="card__hint ${hint.wins ? 'is-win' : 'is-lose'}" aria-hidden="true">${hint.wins ? '&#10003;' : '&#10007;'}</span>`;
-    const title = !playing ? `${cardName(card)}: wait for your turn` : (reason || `Play ${cardName(card)}`);
+    const title = !playing ? `${cardName(card, half)}: wait for your turn` : (reason || `Play ${cardName(card, half)}`);
     const hintSr = legal && hint && hint.kind === 'follow' ? (hint.wins ? ' (would win the trick as it stands)' : ' (would not win)') : '';
-    return `<button type="button" class="${cls.join(' ')}" data-action="play" data-card="${card}" title="${esc(title)}" aria-label="${esc(cardName(card) + hintSr)}"${legal ? '' : ' aria-disabled="true"'}>${cardImg(card)}${mark}</button>`;
+    return `<button type="button" class="${cls.join(' ')}" data-action="play" data-card="${card}" title="${esc(title)}" aria-label="${esc(cardName(card, half) + hintSr)}"${legal ? '' : ' aria-disabled="true"'}>${cardImg(card, { turned })}${mark}</button>`;
   }).join('');
-  return `<div class="hand" role="group" aria-label="Your hand, sorted by suit">${items}</div>`;
+  const turning = !!(vm.board.banner && vm.board.banner.kind === 'turn');
+  return `<div class="hand${turned ? ' hand--turned' : ''}${turning ? ' hand--turning' : ''}" role="group" aria-label="Your hand, sorted by suit${turned ? ', turned round' : ''}">${items}</div>`;
 }
 
 export function handBoxHtml(vm) {
@@ -276,12 +306,13 @@ export function handBoxHtml(vm) {
     return `<div class="handbox handbox--hidden"><p class="handbox__title">Hands are hidden</p>${cardBackImg('handbox__back')}</div>`;
   }
   const playing = vm.myTurn && isCardPhase(vm.state.phase);
-  const rule = vm.state.phase === 'descent' ? 'lowest' : 'highest';
+  const trumpName = SUIT_NAMES[vm.board.trump];
   const legend = playing && vm.view.trick && vm.view.trick.ledSuit
-    ? `<p class="legend"><span class="hint-dot is-win">&#10003;</span> would win the trick as it stands (${rule} of the suit led wins) <span class="hint-dot is-lose">&#10007;</span> would not. Dimmed cards cannot be played: hover or tap one to see why.</p>`
-    : (playing ? '<p class="legend">You lead: play any card. Dimmed cards cannot be played: hover or tap one to see why.</p>' : '');
-  const title = `${who} <span>sorted by suit; each suit runs ${CONSTANTS.RANK_MIN} to ${CONSTANTS.RANK_MAX}</span>`;
-  return `<div class="handbox${vm.myTurn ? ' is-turn' : ''}">
+    ? `<p class="legend"><span class="hint-dot is-win">&#10003;</span> would win the trick as it stands (any ${esc(trumpName)} beats the other suits, then the highest of the suit led) <span class="hint-dot is-lose">&#10007;</span> would not. Dimmed cards cannot be played: hover or tap one to see why.</p>`
+    : (playing ? `<p class="legend">You lead: play any card. ${esc(trumpName)} is trumps. Dimmed cards cannot be played: hover or tap one to see why.</p>` : '');
+  const how = vm.board.handsTurned ? 'turned round: read the number now at the top' : 'sorted by suit; read the big number at the top';
+  const title = `${who} <span>${how}</span>`;
+  return `<div class="handbox${vm.myTurn ? ' is-turn' : ''}${vm.board.handsTurned ? ' handbox--turned' : ''}">
     <p class="handbox__title">${title}</p>
     <div class="hand-wrap">${handHtml(vm)}</div>
     ${legend}
@@ -293,32 +324,55 @@ export function handBoxHtml(vm) {
 // ---------- the summit ----------
 
 /**
- * The summit decision (R5): a Chase card and a Watch card as buttons, each with the stakes from
- * view.stakes (R12.10). data-action="decide" with the action as JSON in data-decision; main.js sends it
- * to the controller. Shown to one human at a time, in a modal.
+ * The summit decision: a Chase card and a Watch card as buttons, each with the stakes from view.stakes.
+ * data-action="decide" with the action as JSON in data-decision; main.js sends it to the controller.
+ * Shown to one human at a time, in a modal.
  */
 export function decisionHtml(vm) {
   if (!vm.myTurn || vm.state.phase !== 'summit' || !vm.view) return '';
   const st = stakesText(vm.view);
-  const btn = (choice, label, line) => `<button type="button" class="decide decide--${choice}" data-action="decide" data-decision='${JSON.stringify({ type: 'summit', choice })}' aria-label="${esc(`${label}. ${line}`)}">${img(choice, { cls: 'decide__card', alt: '', label, w: 150, h: 214 })}<span class="decide__stakes">${esc(line)}</span></button>`;
+  const cost = vm.view.chaseCost;
+  const btn = (choice, label, line, head) => `<button type="button" class="decide decide--${choice}" data-action="decide" data-decision='${JSON.stringify({ type: 'summit', choice })}' aria-label="${esc(`${label}. ${line}`)}">${img(choiceArt(choice, cost), { cls: 'decide__card', alt: '', label, w: 150, h: 214 })}<span class="decide__head">${esc(head)}</span><span class="decide__stakes">${esc(line)}</span></button>`;
   return `<div class="decision" role="group" aria-label="Chase or Watch">
-    <div class="decision__buttons">${btn('chase', 'Chase', st.chase)}${btn('watch', 'Watch', st.watch)}</div>
+    <div class="decision__buttons">${btn('chase', 'Chase', st.chase, `Chase: pay ${cost}`)}${btn('watch', 'Watch', st.watch, 'Watch: pay nothing')}</div>
   </div>`;
 }
 
-/** The summit as its own step: an overlay with the two cards. Nothing here names a side before the reveal. */
+/** The row as a strip of small cards, for the summit modal. */
+function rowStrip(ids, cls = 'summit__row') {
+  return `<ol class="${cls}" aria-label="The Brumby row, left to right">${ids.map((id, i) => `<li class="${id === 'colt' ? 'is-colt' : ''}"><span class="rslot__n">${i + 1}</span>${brumbyImg(id, 'summit__brumby')}</li>`).join('')}</ol>`;
+}
+
+/** The summit as its own step: an overlay with the turned hand, the row and the two cards. Nothing here names a side before the reveal. */
 export function summitModalHtml(vm) {
   if (!vm.myTurn || vm.state.phase !== 'summit' || !vm.view) return '';
   const v = vm.view;
   const who = vm.humanSeats.length > 1 ? `${esc(vm.names[vm.shown])}, choose in secret` : 'Choose in secret';
-  const heldLine = `You hold ${plural(v.stakes.climbTricks, 'climb trick', 'climb tricks')} (${plural(v.stakes.climbPoints, 'point', 'points')}). The mob is worth ${v.stakes.mob}.`;
+  const hand = v.hand.map((c) => `<li>${cardImg(c, { turned: true })}</li>`).join('');
   return `<div class="overlay overlay--summit" data-overlay="summit"><div class="end end--summit" role="dialog" aria-modal="true" aria-labelledby="summit-title">
     <p class="end__kicker">The summit</p>
     <h2 id="summit-title" tabindex="-1" data-autofocus>${who}: Chase or Watch?</h2>
-    <p class="summit__held">${esc(heldLine)}</p>
+    <p class="summit__label">Your hand, turned round</p>
+    <ol class="summit__hand" aria-label="Your turned hand">${hand}</ol>
+    <p class="summit__label">The mob: one Brumby card for each descent trick (worth ${signed(v.stakes.rowValue)} in all)</p>
+    ${rowStrip(v.stakes.row)}
+    <p class="summit__colt"${v.stakes.row.includes('colt') ? '' : ' hidden'}>${v.stakes.row.includes('colt') ? esc(rowSentence(v.stakes.row)) : ''}</p>
     ${decisionHtml(vm)}
-    <p class="summit__rule">To bring the mob home you must win the most descent tricks; a tie goes to whoever won the later trick.</p>
-    <p class="summit__note">Everyone's card is turned together. Chasers need the most descent tricks to bring the mob home. If nobody chases, the hand ends here and everyone banks their climb tricks.</p>
+    <p class="summit__note">Everyone's card is turned together. A chaser pays ${v.chaseCost} at the end of the hand and keeps the Brumby card of every trick they win; a watcher pays nothing, and the Brumby cards they win are sent off. Every trick is 1 point either way.</p>
+  </div></div>`;
+}
+
+/** The turn at the summit: every hand is turned round, the Mountain turns over, the row is laid out (a timed beat during playback). */
+export function turnHtml(vm) {
+  const b = vm.board;
+  if (!b.banner || b.banner.kind !== 'turn') return '';
+  const text = bannerText(b.banner, vm.names, b);
+  return `<div class="overlay overlay--turn" data-overlay="turn"><div class="end end--turn" role="status">
+    <p class="end__kicker">The summit</p>
+    <h2>Everyone turns their hand round</h2>
+    <div class="turn__pics" aria-hidden="true"><span class="turn__card">${cardImg('descent-1', { alt: '' })}</span><span class="turn__mtn">${img('mountain-down', { cls: 'turn__mtnimg', alt: '', label: '', w: 480, h: 336, fallback: '' })}</span></div>
+    ${rowStrip(b.banner.row, 'turn__row')}
+    <p class="turn__text">${esc(text)}</p>
   </div></div>`;
 }
 
@@ -327,15 +381,14 @@ export function revealHtml(vm) {
   const b = vm.board;
   if (!b.revealed) return '';
   // The cards are turned together, so they are laid out the way the seats sit round the table: the viewer
-  // first, then clockwise (the engine's collection order starts at the last climb winner, which put an
-  // opponent first and "You" in the middle of the row).
+  // first, then clockwise.
   const n = b.choices.length;
   const order = Array.from({ length: n }, (_, k) => (vm.me + k) % n);
   const faces = order.map((s) => {
     const c = b.choices[s];
-    return `<li class="reveal__seat reveal__seat--${c}">${img(c, { cls: 'reveal__card', alt: c === 'chase' ? 'Chase' : 'Watch', label: c, w: 120, h: 171 })}<span class="reveal__who">${esc(vm.names[s])}</span></li>`;
+    return `<li class="reveal__seat reveal__seat--${c}">${img(choiceArt(c, b.chaseCost), { cls: 'reveal__card', alt: c === 'chase' ? 'Chase' : 'Watch', label: c, w: 120, h: 171 })}<span class="reveal__who">${esc(vm.names[s])}</span></li>`;
   }).join('');
-  const nobody = b.banner && b.banner.kind === 'nobody';
+  const nobody = b.banner && b.banner.kind === 'reveal' && b.banner.chasers.length === 0;
   const text = b.banner ? bannerText(b.banner, vm.names, b) : '';
   return `<div class="overlay overlay--reveal" data-overlay="reveal"><div class="end end--reveal" role="status">
     <p class="end__kicker">${nobody ? 'Nobody chased' : 'The summit: the cards are turned'}</p>
@@ -354,9 +407,10 @@ export function padHtml(vm) {
   for (let h = 0; h < b.handsPerGame; h++) {
     if (h < log.length && (h < b.handNo || b.phase === 'over')) {
       const rec = log[h];
-      rows.push(`<tr><th scope="row">Hand ${h + 1}</th>${rec.scores.map((x, s) => `<td title="${esc(`${rec.choices[s] || '-'}, ${rec.climbTricks[s]} climb, ${rec.descentTricks[s]} descent: ${outcomeText(rec.outcomes[s])}`)}">${x}</td>`).join('')}</tr>`);
+      const tip = (s) => `${rec.choices[s] === 'chase' ? `Chase (-${rec.costs[s]})` : 'Watch'}: ${rec.trickCounts[s]} ${rec.trickCounts[s] === 1 ? 'trick' : 'tricks'}${rec.choices[s] === 'chase' ? `, ${rec.kept[s].length} Brumby ${rec.kept[s].length === 1 ? 'card' : 'cards'} kept (${signed(rec.keptValues[s])})` : ''}`;
+      rows.push(`<tr><th scope="row">Hand ${h + 1}</th>${rec.scores.map((x, s) => `<td title="${esc(tip(s))}">${x}</td>`).join('')}</tr>`);
     } else if (h === b.handNo && b.phase !== 'over') {
-      rows.push(`<tr class="is-now"><th scope="row">Hand ${h + 1} <small>climb</small></th>${names.map((_, s) => `<td title="Climb tricks so far">${b.climbTricks[s]}</td>`).join('')}</tr>`);
+      rows.push(`<tr class="is-now"><th scope="row">Hand ${h + 1} <small>tricks</small></th>${names.map((_, s) => `<td title="Tricks won so far this hand">${b.climbTricks[s] + b.descentTricks[s]}</td>`).join('')}</tr>`);
     } else {
       rows.push(`<tr class="is-todo"><th scope="row">Hand ${h + 1}</th>${names.map(() => '<td>&middot;</td>').join('')}</tr>`);
     }
@@ -398,66 +452,44 @@ export function coverHtml(vm, seat) {
   </div>`;
 }
 
-/** What each seat did this hand, in words and sums (R9.5: every case). */
+/** What each seat did this hand, in words and sums. */
 function reckonRow(vm, ev, s) {
   const bd = ev.breakdown[s];
   const names = vm.names;
-  let what;
-  let sum = '';
-  if (bd.outcome === 'home') {
-    what = 'Brought the mob home';
-    sum = `${bd.climbPoints} climb + ${bd.mobPoints} mob`;
-  } else if (bd.outcome === 'fell') {
-    what = 'Fell: -1';
-    sum = bd.climbTricks ? `${plural(bd.climbTricks, 'climb trick', 'climb tricks')} lost` : 'no climb tricks to lose';
-  } else {
-    what = 'Watched';
-    sum = bd.climbTricks ? `banks ${plural(bd.climbTricks, 'climb trick', 'climb tricks')}` : 'no climb tricks';
-  }
-  const choice = bd.choice === 'chase' ? 'chase' : 'watch';
-  const descent = ev.endReason === 'descent' ? `${plural(bd.descentTricks, 'descent trick', 'descent tricks')}` : '';
-  return `<li class="reck__row reck__row--${esc(bd.outcome)}" data-seat="${s}">
+  const chose = bd.choice === 'chase' ? 'chase' : 'watch';
+  const trickWord = plural(bd.tricks, 'trick', 'tricks');
+  let sumText = `${trickWord} = ${signed(bd.score)}`;
+  if (chose === 'chase') sumText = `${trickWord} ${bd.keptValue < 0 ? '-' : '+'} ${Math.abs(bd.keptValue)} kept - ${bd.cost} Chase = ${signed(bd.score)}`;
+  const keptThumbs = chose === 'chase' && bd.kept.length ? `<span class="reck__kept" aria-label="Brumby cards kept">${bd.kept.map((id) => `<span class="reck__keptcard" title="${esc(brumbyName(id))}">${brumbyImg(id, 'reck__keptimg')}</span>`).join('')}</span>` : (chose === 'chase' ? '<small>no Brumby cards kept</small>' : '');
+  return `<li class="reck__row reck__row--${chose}" data-seat="${s}">
     ${avatar(s, 'reck__avatar')}
-    <span class="reck__who"><b>${esc(names[s])}</b>${ev.heelsSeat === s ? ` <i class="mark mark--heels">at the heels</i>` : ''}<small>${descent ? `${esc(descent)}` : ''}</small></span>
-    <span class="reck__choice">${img(choice, { cls: 'reck__card', alt: '', label: '', w: 28, h: 40, fallback: '' })}<b>${choice === 'chase' ? 'Chase' : 'Watch'}</b></span>
-    <span class="reck__what"><b>${esc(what)}</b><small>${esc(sum)}</small></span>
+    <span class="reck__who"><b>${esc(names[s])}</b><small>${bd.climbTricks} up, ${bd.descentTricks} down</small></span>
+    <span class="reck__choice">${img(choiceArt(chose, vm.board.chaseCost), { cls: 'reck__card', alt: '', label: '', w: 28, h: 40, fallback: '' })}<b>${chose === 'chase' ? `Chase -${bd.cost}` : 'Watch'}</b></span>
+    <span class="reck__what"><b>${esc(sumText)}</b>${keptThumbs}</span>
     <b class="reck__score" aria-label="${signed(bd.score)} points">${signed(bd.score)}</b>
     <span class="reck__total">Total <b>${ev.totals[s]}</b></span>
   </li>`;
 }
 
-/** The end-of-hand reckoning (R9.5: every case). `modal.event` is the engine's hand-ended event. */
+/** The end-of-hand reckoning. `modal.event` is the engine's hand-ended event. */
 export function handSummaryHtml(vm, modal) {
   const ev = modal.event;
   const names = vm.names;
   const last = vm.state.phase === 'over' && modal.handNo === vm.state.handLog.length - 1;
   const rows = names.map((_, s) => reckonRow(vm, ev, s)).join('');
-  const nameOf = (s) => names[s];
-  let note;
-  let kind;
-  if (ev.endReason === 'nobody-chases') {
-    kind = 'nobody';
-    note = 'Nobody chased: the hand ended at the summit, the mob ran free and everyone banked their climb tricks.';
-  } else if (ev.broughtHomeBy !== null) {
-    kind = 'home';
-    const h = nameOf(ev.broughtHomeBy);
-    note = `${h} ${youName(h) ? 'were' : 'was'} at the mob's heels and brought it home: climb tricks + the mob (${ev.mobValue}). Any other chaser fell for -1.`;
-  } else {
-    kind = 'escaped';
-    const h = nameOf(ev.heelsSeat);
-    note = `${h} ${youName(h) ? 'were' : 'was'} at the mob's heels but watched, so the mob escaped and every chaser fell for -1.`;
-  }
-  const tie = ev.tieAtHeels && ev.heelsSeat !== null ? ` Level on descent tricks, ${nameOf(ev.heelsSeat)} won the later one.` : '';
-  const brumby = ev.broughtHomeBy !== null
-    ? 'The Brumby cards go back to the box: next hand the mob is worth 3.'
-    : (ev.brumbyAdded ? `A Brumby card goes under the Colt (${plural(ev.brumbiesAfter, 'card', 'cards')} now): the mob will be worth ${vm.state.params.mobBase + vm.state.params.brumbyValue * ev.brumbiesAfter}.` : `All ${ev.brumbiesAfter} Brumby cards are already under the Colt, so nothing is added.`);
+  const colt = ev.colt
+    ? (ev.coltKept ? `${names[ev.coltWinner]} won the Colt (${ev.coltTrick === null ? '' : `descent trick ${ev.coltTrick}, `}+4) and kept it.` : `The Colt (trick ${ev.coltTrick}) was won by ${names[ev.coltWinner]}, who watched, so it was sent off.`)
+    : '';
+  const row = `The row was worth ${signed(ev.rowValue)}: ${ev.row.map((id) => signed(brumbyValue(id))).join(' ')}.`;
+  const chasers = ev.chasers === 0 ? 'Nobody chased, so every Brumby card was sent off.' : '';
+  const reshuffle = !last && vm.board.deckCount < vm.state.params.reshuffleBelow ? ' Fewer than 6 Brumby cards are left, so all 12 are shuffled before the next hand.' : '';
   const title = `Hand ${modal.handNo + 1} of ${vm.board.handsPerGame} is over`;
-  return `<div class="overlay overlay--hand" data-overlay="hand"><div class="end end--hand end--${kind}" role="dialog" aria-modal="true" aria-labelledby="hand-title">
+  return `<div class="overlay overlay--hand" data-overlay="hand"><div class="end end--hand" role="dialog" aria-modal="true" aria-labelledby="hand-title">
     <p class="end__kicker">The reckoning</p>
     <h2 id="hand-title">${esc(title)}</h2>
-    <p class="end__note end__note--lead">${esc(note + tie)} ${esc(brumby)}</p>
+    <p class="end__note end__note--lead">${esc(`${row} ${chasers} ${colt}`.replace(/\s+/g, ' ').trim())}</p>
     <ol class="reck" aria-label="Scores for this hand">${rows}</ol>
-    <p class="end__note">Watch: +1 per climb trick. Chase and bring the mob home: climb tricks + the mob. Chase and fall: -1.</p>
+    <p class="end__note">Every trick is 1 point. A chaser adds the Brumby cards they kept and pays ${vm.board.chaseCost}; a watcher just scores the tricks.${esc(reshuffle)}</p>
     <div class="end__buttons"><button type="button" class="btn btn--primary btn--big" data-action="continue" id="continue">${last ? 'See the final result' : 'Deal the next hand'}</button></div>
   </div></div>`;
 }
@@ -473,7 +505,7 @@ export function gameEndHtml(vm) {
   const rows = result.ranking.map((r) => {
     const win = winners.includes(r.seat);
     const eq = result.ranking.filter((x) => x.rank === r.rank).length > 1 ? '=' : '';
-    return `<li class="rank${win ? ' is-winner' : ''}"><span class="rank__pos">${eq}${r.rank}</span>${avatar(r.seat, 'rank__avatar')}<span class="rank__who"><b>${esc(names[r.seat])}</b>${badge(vm, r.seat)}${win ? `<i class="crown">${result.shared ? 'Shared win' : 'Winner'}</i>` : ''}</span><span class="rank__total"><b>${r.total}</b> pts <small>${badgeImg('home', 'tag__badge')}${plural(r.mobsHome, 'mob', 'mobs')} home</small></span></li>`;
+    return `<li class="rank${win ? ' is-winner' : ''}"><span class="rank__pos">${eq}${r.rank}</span>${avatar(r.seat, 'rank__avatar')}<span class="rank__who"><b>${esc(names[r.seat])}</b>${badge(vm, r.seat)}${win ? `<i class="crown">${result.shared ? 'Shared win' : 'Winner'}</i>` : ''}</span><span class="rank__total"><b>${r.total}</b> pts <small>last hand ${r.lastHandScore}</small></span></li>`;
   }).join('');
   const tb = tiebreakText(result, names);
   const padRows = vm.state.handLog.map((h, i) => `<tr><th scope="row">Hand ${i + 1}</th>${h.scores.map((x) => `<td>${x}</td>`).join('')}</tr>`).join('');

@@ -4,22 +4,35 @@
 // finish the descent, end the hand, deal the next one and even end the game. So the screen cannot
 // simply draw `state` after each action: it would jump over the last trick of every hand. Instead the
 // UI keeps a small "board" (everything that is drawn: the trick on the table, hand counts, the turn,
-// the marker, the Brumby stack, the summit choices as far as they are public, the pad) and walks the
-// returned events over it, one frame per beat, so every trick, marker step and reveal is seen.
+// the marker, the Brumby row, the kept piles, the discard, the summit choices as far as they are
+// public, the pad) and walks the returned events over it, one frame per beat, so every trick, marker
+// step, turn of the hands and reveal is seen.
 //
 //   boardFromState(state, humanSeats)    the board for a live state
 //   reduceBoard(board, event, ctx)       the board after one engine event (a fresh copy)
 //   buildFrames(board, events, ctx)      the frames to show, in order, for one action's events
 //
-// No rules live here: every number comes from an event (who won, where the marker went, the scores).
-// The board never holds an unrevealed summit choice: only `chosen` (locked in) until the reveal.
-// tests/ui-node.mjs replays thousands of actions and requires that walking the events over the
-// board before the action gives exactly boardFromState(state after the action). Pure and DOM-free.
+// No rules live here: every number comes from an event (who won, where the marker went, the row, the
+// scores). The one piece of presentation arithmetic is the order of a turned hand, which is the engine's
+// own sortCards(hand, 'descent'). The board never holds an unrevealed summit choice: only `chosen`
+// (locked in) until the reveal. tests/ui-node.mjs replays thousands of actions and requires that
+// walking the events over the board before the action gives exactly boardFromState(state after the
+// action). Pure and DOM-free.
+
+import { sortCards } from '../engine/index.js';
 
 const copy = (x) => JSON.parse(JSON.stringify(x));
 
 /** Fields that only exist while a frame is on screen (excluded from the live-board equality test). */
 export const TRANSIENT = ['fx', 'last', 'banner'];
+
+/** The row slots already taken this hand: { seat, to: 'kept' | 'discard' } or null, parallel to `row`. */
+function takenFromTricks(state) {
+  if (!state.row.length) return [];
+  const taken = state.row.map(() => null);
+  for (const t of state.tricks) if (t.half === 'descent' && t.prize) taken[t.halfTrickNo - 1] = { seat: t.winner, to: t.prizeTo };
+  return taken;
+}
 
 /**
  * @param {object} state        the live engine state
@@ -27,39 +40,45 @@ export const TRANSIENT = ['fx', 'last', 'banner'];
  */
 export function boardFromState(state, humanSeats = []) {
   const n = state.n;
+  const P = state.params;
   let trick = null;
   if (state.trick) {
     const t = state.trick;
     trick = {
-      n: t.n, phase: t.phase, leader: t.leader, seats: [...t.seats], ledSuit: t.ledSuit,
-      plays: t.plays.map((p) => ({ seat: p.seat, card: p.card, offSuit: p.offSuit })),
-      winner: null, winningCard: null, done: false,
+      n: t.n, half: t.half, halfTrickNo: t.halfTrickNo, phase: t.phase, leader: t.leader, seats: [...t.seats], ledSuit: t.ledSuit, trump: t.trump,
+      plays: t.plays.map((p) => ({ seat: p.seat, card: p.card, offSuit: p.offSuit, trump: p.trump })),
+      winner: null, winningCard: null, byTrump: false, done: false,
     };
   }
   return {
     n,
-    handsPerGame: state.params.handsPerGame,
-    summitStep: state.params.summitStep,
-    mountainSide: state.params.mountainSide,
+    handsPerGame: P.handsPerGame,
+    climbTricksPerHand: P.climbTricks,
+    chaseCost: P.chaseCost,
     handNo: state.handNo,
-    handSize: state.handSize,
+    handSize: P.handSize,
     phase: state.phase,
     dealer: state.dealer,
     toAct: state.toAct,
     trickNo: state.trickNo, // completed tricks this hand
-    marker: state.marker,
-    brumbies: state.brumbies,
-    mob: state.mob, // this hand's mob value
+    marker: state.marker, // climb tricks played, 0..6
+    handsTurned: state.handsTurned,
+    trump: state.handsTurned ? P.trumpDescent : P.trumpClimb,
     climbTricks: [...state.climbTricks],
     descentTricks: [...state.descentTricks],
-    lastDescentWin: [...state.lastDescentWin], // who is at the mob's heels now comes from the engine's heelsOf()
     choiceOrder: [...state.choiceOrder],
     chosen: state.choices.map((c) => c !== null),
     choices: state.choices.map((c) => (state.revealed ? c : null)), // public only after the reveal
     revealed: state.revealed,
+    row: [...state.row], // 6 slots once the summit opens, null = taken
+    rowDealt: [...state.rowDealt],
+    rowTaken: takenFromTricks(state),
+    rowNext: state.row.length ? state.descentTrickNo : null, // 0-based position of the next prize
+    kept: state.kept.map((k) => [...k]),
+    discard: [...state.brumbyDiscard],
+    deckCount: state.brumbyDeck.length,
     handCounts: state.hands.map((h) => h.length),
     totals: [...state.totals],
-    mobsHome: [...state.mobsHome],
     trick,
     hands: state.hands.map((h, s) => (humanSeats.includes(s) ? [...h] : null)),
     fx: null,
@@ -88,15 +107,20 @@ export function reduceBoard(board, ev, ctx = {}) {
       b.toAct = ev.leader;
       b.trickNo = 0;
       b.marker = 0;
-      b.brumbies = ev.brumbies;
-      b.mob = ev.mob;
+      b.handsTurned = false;
+      b.trump = ev.trump;
       b.climbTricks = Array.from({ length: n }, () => 0);
       b.descentTricks = Array.from({ length: n }, () => 0);
-      b.lastDescentWin = Array.from({ length: n }, () => -1);
       b.choiceOrder = [];
       b.chosen = Array.from({ length: n }, () => false);
       b.choices = Array.from({ length: n }, () => null);
       b.revealed = false;
+      b.row = [];
+      b.rowDealt = [];
+      b.rowTaken = [];
+      b.rowNext = null;
+      b.kept = Array.from({ length: n }, () => []);
+      b.deckCount = ev.deckCount;
       b.handCounts = Array.from({ length: n }, () => ev.handSize);
       b.trick = null;
       b.last = null;
@@ -107,13 +131,13 @@ export function reduceBoard(board, ev, ctx = {}) {
     case 'card-played': {
       if (ev.asLeader) {
         b.trick = {
-          n: ev.trickNo, phase: ev.phase, leader: ev.seat, seats: Array.from({ length: n }, (_, k) => (ev.seat + k) % n), ledSuit: null, plays: [],
-          winner: null, winningCard: null, done: false,
+          n: ev.trickNo, half: ev.half, halfTrickNo: ev.halfTrickNo, phase: ev.phase, leader: ev.seat, seats: Array.from({ length: n }, (_, k) => (ev.seat + k) % n), ledSuit: null, trump: b.trump, plays: [],
+          winner: null, winningCard: null, byTrump: false, done: false,
         };
       }
       const t = b.trick;
       t.ledSuit = ev.ledSuit;
-      t.plays.push({ seat: ev.seat, card: ev.card, offSuit: ev.offSuit });
+      t.plays.push({ seat: ev.seat, card: ev.card, offSuit: ev.offSuit, trump: ev.trump });
       b.handCounts[ev.seat]--;
       if (b.hands[ev.seat]) b.hands[ev.seat] = b.hands[ev.seat].filter((c) => c !== ev.card);
       const i = t.seats.indexOf(ev.seat);
@@ -125,30 +149,38 @@ export function reduceBoard(board, ev, ctx = {}) {
       const t = b.trick;
       b.climbTricks = [...ev.climbTricks];
       b.descentTricks = [...ev.descentTricks];
-      if (ev.phase === 'descent') b.lastDescentWin[ev.winner] = ev.descentTricks.reduce((a, x) => a + x, 0) - 1; // index of this descent trick
       b.trickNo = ev.trickNo;
       const decided = copy(t);
       decided.winner = ev.winner;
       decided.winningCard = ev.card;
+      decided.byTrump = ev.byTrump;
       decided.done = true;
       b.last = { trick: decided, event: copy(ev) };
       b.fx = { won: ev.winner, phase: ev.phase };
       b.trick = null;
-      b.toAct = ev.winner; // the winner leads next (or the summit follows: summit-reached sets it)
+      b.toAct = ev.winner; // the winner leads next (or the summit follows: summit-opened sets it)
       return b;
     }
     case 'marker-moved':
       b.marker = ev.to;
-      b.fx = { marker: { from: ev.from, to: ev.to, steps: ev.steps, offSuit: ev.offSuit, summit: ev.summit, overshoot: ev.overshoot, base: ev.base, step: ev.to - ev.from, of: ev.to - ev.from } };
+      b.fx = { marker: { from: ev.from, to: ev.to, summit: ev.summit } };
       return b;
-    case 'summit-reached':
+    case 'summit-opened':
       b.phase = 'summit';
+      b.handsTurned = true;
+      b.trump = ev.trump;
+      b.hands = b.hands.map((h) => (h === null ? null : sortCards(h, 'descent')));
+      b.row = [...ev.row];
+      b.rowDealt = [...ev.row];
+      b.rowTaken = ev.row.map(() => null);
+      b.rowNext = 0;
+      b.deckCount = ev.deckCount;
       b.choiceOrder = [...ev.order];
       b.chosen = Array.from({ length: n }, () => false);
       b.choices = Array.from({ length: n }, () => null);
       b.revealed = false;
       b.toAct = ev.order[0];
-      b.banner = { kind: 'summit' };
+      b.banner = { kind: 'turn', row: [...ev.row], rowValue: ev.rowValue, colt: ev.colt, chaseCost: ev.chaseCost };
       return b;
     case 'summit-chosen': {
       b.chosen[ev.seat] = true;
@@ -160,41 +192,51 @@ export function reduceBoard(board, ev, ctx = {}) {
       b.choices = [...ev.choices];
       b.revealed = true;
       b.toAct = null;
-      b.banner = { kind: 'reveal', chasers: [...ev.chasers] };
-      return b;
-    case 'nobody-chased':
-      b.toAct = null;
-      b.banner = { kind: 'nobody', mob: ev.mob };
+      b.banner = { kind: 'reveal', chasers: [...ev.chasers], watchers: [...ev.watchers], chaseCost: ev.chaseCost };
       return b;
     case 'descent-started':
       b.phase = 'descent';
       b.toAct = ev.leader;
-      b.banner = { kind: 'descent' };
+      b.banner = { kind: 'descent', leader: ev.leader, chasers: [...ev.chasers] };
       return b;
-    case 'at-the-heels':
-      b.toAct = null;
-      b.banner = { kind: 'heels', seat: ev.seat, tricks: ev.descentTricks[ev.seat], tie: ev.tie, tied: [...ev.tied] };
+    case 'brumby-kept': {
+      const i = ev.position - 1;
+      b.row[i] = null;
+      b.rowTaken[i] = { seat: ev.winner, to: 'kept' };
+      b.rowNext = ev.position;
+      b.kept[ev.winner] = [...ev.kept];
+      b.fx = { prize: { seat: ev.winner, to: 'kept', card: ev.card } };
+      b.banner = { kind: 'prize', seat: ev.winner, to: 'kept', card: ev.card, value: ev.value };
       return b;
-    case 'mob-home':
-      b.mobsHome[ev.seat]++;
-      b.brumbies = 0;
-      b.banner = { kind: 'home', seat: ev.seat, mob: ev.mob, climbTricks: ev.climbTricks, score: ev.score };
+    }
+    case 'brumby-discarded': {
+      const i = ev.position - 1;
+      b.row[i] = null;
+      b.rowTaken[i] = { seat: ev.winner, to: 'discard' };
+      b.rowNext = ev.position;
+      b.discard.push(ev.card);
+      b.fx = { prize: { seat: ev.winner, to: 'discard', card: ev.card } };
+      b.banner = { kind: 'prize', seat: ev.winner, to: 'discard', card: ev.card, value: ev.value };
       return b;
-    case 'mob-escaped':
-      b.banner = { kind: 'escaped', reason: ev.reason, heels: ev.heels, fallen: [...ev.fallen] };
-      return b;
-    case 'brumby-added':
-      b.brumbies = ev.brumbies;
-      b.banner = { kind: 'brumby', added: ev.added, atCap: ev.atCap, brumbies: ev.brumbies, nextMob: ev.nextMob, lastHand: ev.lastHand };
-      return b;
+    }
     case 'hand-ended': {
       b.totals = [...ev.totals];
       b.handNo = ev.handNo + 1;
       b.trick = null;
       b.toAct = null;
+      for (let s = 0; s < n; s++) { b.discard.push(...b.kept[s]); b.kept[s] = []; } // the engine files every kept card, then any left in the row
+      for (const id of b.row) if (id !== null) b.discard.push(id);
+      b.row = [];
+      b.rowTaken = [];
+      b.rowNext = null;
       b.fx = { handEnded: true };
       return b;
     }
+    case 'brumby-reshuffled':
+      b.deckCount = ev.deckCount;
+      b.discard = [];
+      b.banner = { kind: 'reshuffle', deckCount: ev.deckCount };
+      return b;
     case 'game-over':
       b.phase = 'over';
       b.toAct = null;
@@ -212,19 +254,15 @@ export function sameBoard(a, b) {
 
 /** How long each beat stays on screen (ms, before the speed scale), for the events with a log line. */
 const HOLDS = {
-  'marker-moved': 700, // the last step; each earlier step holds MARKER_STEP_HOLD
-  'summit-reached': 1200,
+  'marker-moved': 600,
+  'summit-opened': 2800, // the hands turn, the Mountain turns, the row is laid out
   'summit-chosen': 250,
   'summit-revealed': 2600, // the Chase and Watch cards face up
-  'nobody-chased': 1800,
-  'descent-started': 1000,
-  'at-the-heels': 1500,
-  'mob-home': 1500,
-  'mob-escaped': 1400,
-  'brumby-added': 1300,
+  'descent-started': 900,
+  'brumby-kept': 1000,
+  'brumby-discarded': 1000,
+  'brumby-reshuffled': 900,
 };
-/** Each step of the marker is its own beat, so a trick that is worth three steps is seen as three. */
-const MARKER_STEP_HOLD = 420;
 
 /**
  * Frames for the events of ONE action, starting from `board` (what is on screen now).
@@ -251,8 +289,9 @@ export function buildFrames(board, events, ctx) {
         const decided = copy(b);
         decided.trick.winner = ev.winner;
         decided.trick.winningCard = ev.card;
+        decided.trick.byTrump = ev.byTrump;
         decided.trick.done = true;
-        decided.banner = { kind: 'trick', winner: ev.winner, card: ev.card, phase: ev.phase };
+        decided.banner = { kind: 'trick', winner: ev.winner, card: ev.card, phase: ev.phase, byTrump: ev.byTrump };
         push(decided, { kind: 'decided', hold: 1250 });
         const nb = reduceBoard(b, ev, ctx);
         push(nb, { kind: 'resolve', hold: 700, log: ctx.trickText(nb.last.trick, ev, ctx.names), logKind: 'trick' });
@@ -268,21 +307,6 @@ export function buildFrames(board, events, ctx) {
       case 'game-over':
         push(reduceBoard(b, ev, ctx), { kind: 'over', hold: 0, log: ctx.describe(ev, ctx.names), logKind: 'hand' });
         break;
-      case 'marker-moved': {
-        // One beat per step the marker takes (the base step, then one for each off-suit card), the last
-        // beat carrying the log line. fx.marker.step / .of say which step this is; step 1 is the climb
-        // trick itself, every later one is an off-suit step to call out.
-        const steps = Math.max(1, ev.to - ev.from);
-        for (let i = 1; i <= steps; i++) {
-          const nb = reduceBoard(b, ev, ctx);
-          nb.marker = ev.from + i;
-          nb.fx.marker.step = i;
-          nb.fx.marker.of = steps;
-          const last = i === steps;
-          push(nb, { kind: 'marker-moved', hold: last ? HOLDS['marker-moved'] : MARKER_STEP_HOLD, ...(last ? { log: ctx.describe(ev, ctx.names), logKind: 'event' } : {}) });
-        }
-        break;
-      }
       default:
         if (HOLDS[ev.type] !== undefined) {
           push(reduceBoard(b, ev, ctx), { kind: ev.type, hold: HOLDS[ev.type], log: ctx.describe(ev, ctx.names), logKind: ev.type === 'summit-chosen' ? 'info' : 'event' });

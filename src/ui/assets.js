@@ -8,7 +8,7 @@
 // Art ids follow assets/manifest.json. Keep BUILT_IN in
 // step with the manifest (ui-node checks it).
 
-import { SUITS, SUIT_ICONS, cardFace, cardSuit, cardValue, cardName, fullDeck } from '../engine/index.js';
+import { SUITS, SUIT_ICONS, cardFace, cardSuit, valueIn, cardName, fullDeck, brumbyFace, brumbyValue, brumbyName } from '../engine/index.js';
 
 const BASE = 'assets/';
 
@@ -16,13 +16,17 @@ const BASE = 'assets/';
 // manifest, so the page works even if the manifest fetch fails (offline, file://, 404).
 const BUILT_IN = {
   'card-back': 'cards/card-back.webp',
-  'brumby-front': 'cards/brumby-front.webp',
   'brumby-back': 'cards/brumby-back.webp',
-  chase: 'cards/chase.webp',
-  watch: 'cards/watch.webp',
-  'mountain-7': 'cards/mountain-7.webp',
-  'mountain-6': 'cards/mountain-6.webp',
+  'brumby-plus2': 'cards/brumby-plus2.webp',
+  'brumby-plus1': 'cards/brumby-plus1.webp',
+  'brumby-flint': 'cards/brumby-flint.webp',
+  'brumby-wombat': 'cards/brumby-wombat.webp',
   colt: 'cards/colt.webp',
+  'chase-3': 'cards/chase-3.webp',
+  'chase-2': 'cards/chase-2.webp',
+  watch: 'cards/watch.webp',
+  'mountain-up': 'cards/mountain-up.webp',
+  'mountain-down': 'cards/mountain-down.webp',
   'mob-marker': 'mob-marker.webp',
   favicon: 'favicon.png',
 };
@@ -97,15 +101,39 @@ export function img(id, { alt = '', cls = '', label = '', w = 0, h = 0, fallback
 const GLYPHS = { trophy: '▲', stockwhip: '●', hat: '■', horseshoe: '◆' };
 export const suitGlyph = (suit) => GLYPHS[SUIT_ICONS[suit]] || '?';
 
-/** A card face drawn in HTML: the number and the suit shape, in the suit's colour. */
-export function cardChip(card, cls = '') {
+/** A card face drawn in HTML: the number in play and the suit shape, in the suit's colour. */
+export function cardChip(card, cls = '', half = 'climb') {
   const suit = cardSuit(card);
-  return `<span class="asset-chip cardimg cardchip cardchip--${suit} ${esc(cls)}" role="img" aria-label="${esc(cardName(card))}"><b>${cardValue(card)}</b><i aria-hidden="true">${suitGlyph(suit)}</i></span>`;
+  return `<span class="asset-chip cardimg cardchip cardchip--${suit} ${esc(cls)}" role="img" aria-label="${esc(cardName(card, half))}"><b>${valueIn(card, half)}</b><i aria-hidden="true">${suitGlyph(suit)}</i></span>`;
 }
 
-/** A card face as an <img> (the aspect ratio is fixed by CSS), or the drawn face when there is no art. */
-export function cardImg(card, { cls = '', alt = '' } = {}) {
-  return img(cardFace(card), { cls: `cardimg ${cls}`.trim(), alt, label: cardName(card), w: 300, h: 429, fallback: cardChip(card, cls) });
+/**
+ * A card face as an <img> (the aspect ratio is fixed by CSS), or the drawn face when there is no art.
+ * `turned`: the hand has been turned round at the summit, so the whole split card is shown upside down
+ * (the descent number is then at the top, the right way up for reading).
+ */
+export function cardImg(card, { cls = '', alt = '', turned = false } = {}) {
+  const half = turned ? 'descent' : 'climb';
+  const c = `cardimg${turned ? ' is-turned' : ''} ${cls}`.trim();
+  return img(cardFace(card), { cls: c, alt, label: cardName(card, half), w: 300, h: 428, fallback: cardChip(card, `${turned ? 'is-turned ' : ''}${cls}`.trim(), half) });
+}
+
+/** A Brumby card (landscape, its value printed on it) by engine id ('brumby-plus2-3', 'colt', ...). */
+export function brumbyImg(id, cls = '') {
+  const v = brumbyValue(id);
+  const text = `${v > 0 ? '+' : ''}${v}`;
+  return img(brumbyFace(id), { cls: `brumbyimg ${cls}`.trim(), alt: brumbyName(id), label: text, w: 480, h: 336, fallback: `<span class="asset-chip brumbyimg brumbychip brumbychip--${v > 0 ? 'good' : 'bad'} ${esc(cls)}" role="img" aria-label="${esc(brumbyName(id))}">${text}</span>` });
+}
+
+/** The face-down Brumby deck card (landscape). */
+export function brumbyBackImg(cls = '') {
+  return img('brumby-back', { cls: `brumbyimg ${cls}`.trim(), alt: '', label: 'Brumby card', w: 480, h: 336, fallback: `<span class="asset-chip brumbyimg brumbychip ${esc(cls)}" role="img" aria-label="Brumby card, face down"></span>` });
+}
+
+/** Art id of a summit choice's card: Chase shows its cost (chase-3 at two players, chase-2 at three and four). */
+export function choiceArt(choice, cost) {
+  if (choice === 'watch') return 'watch';
+  return assetUrl(`chase-${cost}`) ? `chase-${cost}` : 'chase-3';
 }
 
 export function cardBackImg(cls = '') {

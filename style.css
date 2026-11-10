@@ -146,7 +146,6 @@ legend { font-weight: 700; padding: 0; margin-bottom: 4px; }
 .phasebar__badge--mob { width: auto; height: 34px; filter: drop-shadow(0 1px 1px rgba(43, 26, 16, 0.5)); }
 .phasebar__name { font-family: var(--font-display); font-size: 1.3rem; text-transform: uppercase; letter-spacing: 0.03em; line-height: 1.1; }
 .phasebar__rule { font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.95; }
-.phasebar__best { font-style: normal; font-weight: 700; text-transform: none; letter-spacing: 0; }
 .phasebar__range { flex-basis: 100%; font-size: 0.95rem; font-weight: 800; letter-spacing: 0.01em; }
 .phasebar__meta { flex-basis: 100%; font-size: 0.8rem; font-weight: 600; opacity: 0.92; }
 .status__prompt { margin: 0; padding: 8px 12px 9px; font-weight: 700; min-height: 3.9em; }
@@ -168,18 +167,12 @@ legend { font-weight: 700; padding: 0; margin-bottom: 4px; }
 .seat { align-self: start; background: var(--card); border: 2px solid var(--line); border-radius: 12px; padding: 6px 8px; display: flex; flex-direction: column; gap: 5px; min-width: 0; position: relative; container-type: inline-size; }
 .seat.is-turn { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(217, 150, 58, 0.85); }
 .seat.is-winning { border-color: var(--good); }
-.seat.is-heels { border-color: var(--accent); }
 /* avatar | name, level and (small, muted) the cards in hand: the tricks won are what matters in this game */
 .seat__head { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 2px 8px; min-width: 0; }
 .seat__hand { font-size: 0.78rem; font-weight: 600; color: var(--ink-soft); line-height: 1.2; }
 .seat__cardsnum { font-weight: 700; font-variant-numeric: tabular-nums; }
 /* A narrow seat (5 players, phones) drops its avatar so the name is never cut: the name matters more. */
 @container (max-width: 215px) {
-  /* the pile stacks: label, then the big number, then the little cards */
-  .pile { grid-template-columns: minmax(0, 1fr); padding: 2px 5px 4px; }
-  .pile > i { grid-column: 1; grid-row: 1; font-size: 0.58rem; letter-spacing: 0.02em; }
-  .pile b { grid-column: 1; grid-row: 2; }
-  .pile__minis { grid-row: 3; }
   .seat__head { grid-template-columns: minmax(0, 1fr); }
   .seat__head .seat__avatar { display: none; }
 }
@@ -197,25 +190,23 @@ legend { font-weight: 700; padding: 0; margin-bottom: 4px; }
 .tag { display: inline-flex; align-items: center; gap: 3px; font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; border-radius: 6px; padding: 1px 6px; }
 .tag--dealer { background: var(--ink); color: #fff; }
 .tag--turn { background: var(--gold); color: var(--ink); }
-.tag--heels { background: var(--accent); color: #fff; }
 .tag__badge { width: 16px; height: 16px; }
-.tag--heels .tag__badge { background: #fff; }
-/* the climb pile (cards upright) and the descent pile (cards turned sideways, as in the rule book) */
-/* descent first and biggest (the figure the cards-in-hand number used to be), climb two-thirds of it */
-.seat__piles { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 4px 6px; }
-.pile { display: grid; grid-template-columns: auto 1fr; align-items: end; gap: 0 5px; background: var(--paper-2); border-radius: 8px; padding: 2px 6px 4px; min-width: 0; }
-.pile b { font-family: var(--font-display); font-weight: 400; line-height: 1; font-variant-numeric: tabular-nums; }
-.pile--descent b { font-size: 2.1rem; }
-.pile--climb b { font-size: 1.4rem; }
-.pile > i { font-style: normal; font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); font-weight: 800; padding-bottom: 3px; }
+/* one pile of tricks per seat (1 point each, up or down), and the Brumby cards a chaser has kept */
+.seat__piles { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.pile { display: grid; grid-template-columns: auto 1fr; align-items: end; gap: 0 6px; background: var(--paper-2); border-radius: 8px; padding: 2px 8px 4px; min-width: 0; }
+.pile b { font-family: var(--font-display); font-weight: 400; line-height: 1; font-variant-numeric: tabular-nums; font-size: 2rem; }
+.pile > i { font-style: normal; font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); font-weight: 800; padding-bottom: 3px; }
 .pile__minis { grid-column: 1 / -1; grid-row: 2; display: flex; flex-wrap: wrap; gap: 2px; min-height: 13px; align-content: flex-start; padding-top: 4px; }
-.pile--descent { background: #efd9c4; }
-.pile--descent.is-heels { background: #f4cdb3; box-shadow: 0 0 0 2px var(--accent); }
-.pile__minis .mini { position: relative; display: block; flex: none; }
-.mini--up { width: 8px; height: 12px; }
-.mini--side { width: 12px; height: 8px; }
+.pile__minis .mini { position: relative; display: block; flex: none; width: 8px; height: 12px; }
 .mini::before { content: ''; position: absolute; left: 50%; top: 50%; width: 8px; height: 12px; border-radius: 1.5px; background: var(--ink) url(assets/cards/card-back.webp) center / cover; box-shadow: 0 0 0 1px var(--ink); transform: translate(-50%, -50%); }
-.mini--side::before { transform: translate(-50%, -50%) rotate(90deg); }
+.seat__kept { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; background: #f3e6c4; border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px; min-height: 32px; min-width: 0; }
+.kept__label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); font-weight: 800; }
+.kept__none { font-size: 0.78rem; color: var(--ink-soft); font-weight: 600; }
+.kept__fan { display: inline-flex; align-items: center; padding-left: 18px; min-width: 0; }
+.kept__card { display: block; width: 38px; margin-left: -18px; flex: none; }
+.kept__card.is-new { animation: slide-in 0.45s ease-out both; }
+.kept__img { display: block; width: 100%; height: auto; aspect-ratio: 480 / 336; border-radius: 4px; box-shadow: 0 1px 3px rgba(43, 26, 16, 0.55); }
+.kept__sum { font-family: var(--font-display); font-weight: 400; font-size: 1.05rem; color: var(--good); }
 .seat__piles .schip { grid-column: 1 / -1; }
 .schip { display: inline-flex; align-items: center; gap: 4px; background: var(--paper-2); border-radius: 8px; padding: 1px 8px 1px 5px; min-height: 26px; white-space: nowrap; }
 .schip b { font-family: var(--font-body); font-weight: 800; font-size: 0.85rem; }
@@ -223,11 +214,11 @@ legend { font-weight: 700; padding: 0; margin-bottom: 4px; }
 .schip .schip__card, .reck .reck__card { height: 26px; width: 18px; aspect-ratio: 300 / 428; border-radius: 3px; flex: none; filter: none; }
 .schip--slot { visibility: hidden; }
 .schip--chase { background: #f1d3cc; } .schip--watch { background: #d9ded6; }
+.schip--chase i { color: #8a2b1f; font-weight: 800; font-size: 0.8rem; }
 .schip--own { outline: 2px dashed var(--ink-soft); outline-offset: -2px; }
 .seat__score { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: center; font-size: 0.82rem; color: var(--ink-soft); }
 .seat__score b { color: var(--ink); }
 .total b { font-family: var(--font-display); font-weight: 400; font-size: 1.1rem; }
-.plus { color: var(--good); font-weight: 800; display: inline-flex; align-items: center; gap: 2px; }
 .badge-suit { display: inline-block; border-radius: 50%; flex: none; vertical-align: middle; }
 span.badge-suit { display: inline-grid; place-items: center; color: #fff; font-size: 0.7em; }
 .badge-suit--escape { background: var(--s-escape); color: var(--ink); } .badge-suit--climb { background: var(--s-climb); }
@@ -242,39 +233,52 @@ span.badge-suit { display: inline-grid; place-items: center; color: #fff; font-s
 .asset-chip.cardchip--descent { color: var(--s-descent); border-color: var(--s-descent); } .asset-chip.cardchip--home { color: var(--s-home); border-color: var(--s-home); }
 .asset-chip.cardchip--back { background: repeating-linear-gradient(45deg, var(--s-home), var(--s-home) 6px, var(--night-dark) 6px, var(--night-dark) 12px); border-color: var(--ink); }
 
-/* the stage: Mountain and Colt on one side, the trick on the other */
-.stage { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: 'mountain' 'colt' 'trick'; gap: 10px; min-width: 0; }
-.stage__mountain { grid-area: mountain; } .stage__colt { grid-area: colt; } .stage__trick { grid-area: trick; }
-.stage__mountain, .stage__trick, .stage__colt { background: var(--card); border: 2px solid var(--ink); border-radius: 12px; padding: 8px 10px 10px; min-width: 0; }
+/* the stage: Mountain, the Brumby row and the trick */
+.stage { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: 'mountain' 'row' 'trick'; gap: 10px; min-width: 0; }
+.stage__mountain { grid-area: mountain; } .stage__row { grid-area: row; } .stage__trick { grid-area: trick; }
+.stage__mountain, .stage__trick, .stage__row { background: var(--card); border: 2px solid var(--ink); border-radius: 12px; padding: 8px 10px 10px; min-width: 0; }
 body[data-busy='1'] .stage { cursor: pointer; }
 
 /* the Mountain card and the mob marker */
 .mountain { max-width: 440px; margin: 0 auto; }
 .mountain__card { position: relative; border-radius: 10px; box-shadow: 0 2px 6px rgba(43, 26, 16, 0.45); aspect-ratio: 480 / 336; }
 .mountain__img { display: block; width: 100%; height: 100%; border-radius: 10px; }
-.mountain__marker { position: absolute; width: 15%; transform: translate(-50%, -86%); transition: left 0.38s ease-in-out, top 0.38s ease-in-out; pointer-events: none; z-index: 3; }
+.mountain[data-flip='1'] .mountain__img { animation: flip 0.7s ease-out; }
+.mountain__marker { position: absolute; width: 13%; transform: translate(-50%, -86%); transition: left 0.38s ease-in-out, top 0.38s ease-in-out; pointer-events: none; z-index: 3; }
 .mountain__marker::before { content: ''; position: absolute; left: 50%; bottom: 4%; width: 135%; aspect-ratio: 1; border-radius: 50%; transform: translate(-50%, 50%); background: radial-gradient(circle, rgba(217, 150, 58, 0.75) 0%, rgba(217, 150, 58, 0) 68%); z-index: -1; }
 .mountain__piece { display: block; width: 100%; height: auto; filter: drop-shadow(0 2px 2px rgba(43, 26, 16, 0.65)); }
 .mountain__callout { position: absolute; z-index: 4; transform: translate(-50%, -230%); padding: 1px 9px; border-radius: 999px; background: var(--gold); color: var(--ink); border: 2px solid var(--ink); font-weight: 800; font-size: 0.85rem; white-space: nowrap; pointer-events: none; animation: callout 1.1s ease-out both; }
-.mountain__callout.is-off { background: var(--accent); color: #fff; }
 .mountain__title { margin: 6px 0 0; text-align: center; font-size: 0.85rem; color: var(--ink-soft); font-weight: 600; }
 .mountain__title b { font-family: var(--font-display); font-weight: 400; font-size: 1.1rem; color: var(--ink); }
+.mountain__trump { margin: 4px 0 0; display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 600; font-size: 0.9rem; }
+.mountain__badge { width: 22px; height: 22px; }
 .mountain__fx { margin: 0; text-align: center; min-height: 1.35em; font-size: 0.85rem; font-weight: 800; color: var(--accent-dark); }
-.mountain__standing { margin: 2px 0 0; text-align: center; font-size: 0.85rem; font-weight: 700; color: var(--ink-soft); }
-.mountain__heels { margin: 2px 0 0; text-align: center; font-weight: 700; background: #f4dccf; border-radius: 8px; padding: 3px 8px; }
 
-/* the Colt with its Brumby cards tucked under it, and the mob's value */
-.colt { display: flex; align-items: center; justify-content: center; gap: 4px 14px; flex-wrap: wrap; }
-.colt__pile { --cw: 150px; --ch: 105px; --bw: 84px; --bh: 120px; --step: 26px; position: relative; flex: none; height: var(--bh); width: calc(var(--cw) + var(--k) * var(--step)); }
-.colt__img { position: absolute; left: 0; top: calc((var(--bh) - var(--ch)) / 2); width: var(--cw); height: var(--ch); border-radius: 8px; z-index: 20; box-shadow: 0 2px 6px rgba(43, 26, 16, 0.5); }
-.brumby { position: absolute; top: 0; width: var(--bw); height: var(--bh); left: calc(var(--cw) - var(--bw) + (var(--i) + 1) * var(--step)); z-index: calc(10 - var(--i)); animation: slide-in 0.5s ease-out both; }
-.brumby__img { display: block; width: 100%; height: 100%; border-radius: 6px; box-shadow: 0 2px 5px rgba(43, 26, 16, 0.5); }
-.brumby__chip { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; border-radius: 50%; background: var(--card); border: 2px solid var(--ink); font-style: normal; font-weight: 800; font-size: 0.7rem; display: grid; place-items: center; }
-.mob { margin: 0; display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; }
-.mob__label { font-size: 0.78rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); }
-.mob__value { font-family: var(--font-display); font-weight: 400; font-size: 2.6rem; line-height: 1; color: var(--accent-dark); }
-.mob__sum, .mob__next { color: var(--ink-soft); font-size: 0.78rem; font-weight: 600; }
-.mob__next { color: var(--accent-dark); font-weight: 800; }
+/* the Brumby row: the mob laid out at the summit, one card for each descent trick */
+.row__title { font-family: var(--font-display); margin: 2px 0 8px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.row__cost { font-family: var(--font-body); font-weight: 800; font-size: 0.8rem; color: var(--accent-dark); background: #f4dccf; border-radius: 999px; padding: 1px 10px; }
+.row__slots, .summit__row, .turn__row { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 6px; }
+.rslot, .summit__row li, .turn__row li { position: relative; aspect-ratio: 480 / 336; border-radius: 6px; }
+.rslot__img, .summit__brumby { display: block; width: 100%; height: auto; aspect-ratio: 480 / 336; border-radius: 6px; box-shadow: 0 1px 4px rgba(43, 26, 16, 0.5); }
+.rslot__n { position: absolute; left: -4px; top: -7px; z-index: 2; width: 19px; height: 19px; border-radius: 50%; background: var(--ink); color: #fff; font-size: 0.7rem; font-weight: 800; display: grid; place-items: center; line-height: 1; }
+.rslot--down .rslot__img { opacity: 0.85; filter: saturate(0.7); }
+.rslot.is-next { outline: 4px solid var(--gold); outline-offset: 2px; box-shadow: 0 0 14px rgba(217, 150, 58, 0.9); z-index: 1; }
+.rslot.is-next.is-new { animation: pop 0.6s ease-out; }
+.rslot.is-next .rslot__n { background: var(--gold); color: var(--ink); }
+.rslot.is-colt .rslot__img, .summit__row .is-colt .summit__brumby, .turn__row .is-colt .summit__brumby { box-shadow: 0 0 0 2px var(--gold), 0 0 10px rgba(217, 150, 58, 0.9); }
+.rslot.is-taken { border: 2px dashed var(--line); display: grid; place-items: center; }
+.rslot__gone { display: flex; flex-direction: column; align-items: center; line-height: 1; gap: 1px; font-size: 0.62rem; font-weight: 800; text-transform: uppercase; color: var(--ink-soft); }
+.rslot__gone i { font-style: normal; }
+.rslot__gone b { font-size: 1.3rem; }
+.rslot__avatar { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
+.rslot__gone--kept { color: var(--good); }
+.row__line { margin: 8px 0 0; font-size: 0.85rem; font-weight: 700; color: var(--ink-soft); min-height: 2.6em; }
+.row__piles { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; font-size: 0.82rem; color: var(--ink-soft); font-weight: 600; }
+.row__pile b, .row__discard summary b { font-family: var(--font-display); font-weight: 400; color: var(--ink); }
+.row__discard summary { cursor: pointer; min-height: 24px; }
+.row__thumbs { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+.row__thumb { width: 38px; display: block; }
+.row__thumbimg { display: block; width: 100%; height: auto; border-radius: 3px; }
 
 /* the current trick */
 .trick__title { font-family: var(--font-display); margin: 2px 0 6px; font-size: 1rem; }
@@ -289,8 +293,9 @@ body[data-busy='1'] .stage { cursor: pointer; }
 .mark { font-style: normal; font-size: 0.6rem; text-transform: uppercase; font-weight: 800; letter-spacing: 0.03em; padding: 0 4px; border-radius: 4px; background: var(--paper-2); }
 .mark--wins { background: var(--good); color: #fff; }
 .mark--off-suit { background: var(--accent); color: #fff; }
-.mark--heels { background: var(--accent); color: #fff; }
+.mark--trump, .mark--trumps { background: var(--gold); color: var(--ink); }
 .tplay.is-offsuit .tplay__card .cardimg { opacity: 0.88; }
+.cardimg.is-turned { transform: rotate(180deg); }
 .tplay.is-winner .tplay__card .cardimg { box-shadow: 0 0 0 4px var(--good), 0 0 16px rgba(47, 122, 69, 0.7); border-radius: 6%; animation: pop 0.5s ease-out; }
 .tplay.is-lost { opacity: 0.6; }
 .trick__msg { margin: 6px 0 0; text-align: center; min-height: 1.5em; font-size: 0.9rem; color: var(--ink-soft); }
@@ -306,6 +311,8 @@ body[data-busy='1'] .stage { cursor: pointer; }
 .card { padding: 0; border: 0; background: none; position: relative; width: var(--hw); cursor: pointer; font: inherit; border-radius: 6px; transition: transform 0.12s ease; -webkit-tap-highlight-color: transparent; }
 .card.is-legal:hover, .card.is-legal:focus-visible, .card.is-selected { transform: translateY(-8px); }
 .card.is-selected .cardimg, .card.is-legal:hover .cardimg { filter: drop-shadow(0 0 3px var(--night)) drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)); }
+.card.is-trump::after { content: ''; position: absolute; left: 12%; right: 12%; bottom: -5px; height: 3px; border-radius: 2px; background: var(--gold); }
+.hand--turning .cardimg { animation: turn-round 1.1s ease-in-out both; }
 .card.is-blocked { cursor: not-allowed; }
 .card.is-blocked .cardimg { filter: grayscale(0.9) brightness(0.62); opacity: 0.7; }
 .card.is-wait { cursor: default; }
@@ -350,26 +357,40 @@ body[data-busy='1'] .stage { cursor: pointer; }
 .dialog--wide { max-width: 760px; }
 .table-wrap { overflow-x: auto; }
 
-/* the summit: Chase and Watch as two cards */
-.end--summit { max-width: 560px; text-align: center; }
-.end--summit h2 { font-size: 1.5rem; }
-.summit__held { font-weight: 700; margin-bottom: 10px; }
-.decision__buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.decide { display: flex; flex-direction: column; align-items: center; gap: 8px; background: var(--card); border: 3px solid var(--ink); border-radius: 14px; padding: 10px 8px 12px; cursor: pointer; font: inherit; color: var(--ink); text-align: center; transition: transform 0.12s ease, box-shadow 0.12s ease; min-width: 0; }
+/* the summit: the turned hand, the row, then Chase and Watch as two cards */
+.end--summit { max-width: 600px; text-align: center; }
+.end--summit h2 { font-size: 1.4rem; }
+.summit__label { font-weight: 800; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); margin: 10px 0 6px; }
+.summit__hand { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; padding: 0; margin: 0; }
+.summit__hand li { width: 52px; }
+.summit__colt { font-weight: 800; background: #f7e2b8; border: 2px solid var(--gold); border-radius: 10px; padding: 4px 10px; margin: 8px 0 0; }
+.decision { margin-top: 12px; }
+.decision__buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.decide { display: flex; flex-direction: column; align-items: center; gap: 6px; background: var(--card); border: 3px solid var(--ink); border-radius: 14px; padding: 8px 8px 10px; cursor: pointer; font: inherit; color: var(--ink); text-align: center; transition: transform 0.12s ease, box-shadow 0.12s ease; min-width: 0; }
 .decide:hover, .decide:focus-visible { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(43, 26, 16, 0.4); }
 .decide--chase { border-color: #9e2b2b; }
 .decide--watch { border-color: #66726a; }
-.decide__card { width: min(150px, 100%); height: auto; aspect-ratio: 300 / 428; border-radius: 8px; filter: drop-shadow(0 2px 4px rgba(43, 26, 16, 0.5)); }
-.decide__stakes { font-weight: 700; font-size: 0.9rem; line-height: 1.3; }
-.summit__rule { font-weight: 800; font-size: 1rem; margin: 12px 0 0; padding: 8px 10px; background: #f7e2b8; border: 2px solid var(--gold); border-radius: 10px; }
+.decide__card { width: min(110px, 100%); height: auto; aspect-ratio: 300 / 428; border-radius: 8px; filter: drop-shadow(0 2px 4px rgba(43, 26, 16, 0.5)); }
+.decide__head { font-family: var(--font-display); font-size: 1.05rem; line-height: 1.15; }
+.decide__stakes { font-weight: 600; font-size: 0.85rem; line-height: 1.3; }
 .summit__note { color: var(--ink-soft); font-size: 0.82rem; margin: 12px 0 0; }
+
+/* the turn at the summit: the hands and the Mountain turn round */
+.end--turn { max-width: 560px; text-align: center; }
+.end--turn h2 { font-size: 1.45rem; }
+.turn__pics { display: flex; justify-content: center; align-items: center; gap: 18px; margin: 8px 0 12px; }
+.turn__card { width: 84px; display: block; }
+.turn__card .cardimg { animation: turn-round 1.3s ease-in-out 0.35s both; }
+.turn__mtn { width: 150px; display: block; }
+.turn__mtnimg { display: block; width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 6px rgba(43, 26, 16, 0.45); animation: flip 0.8s ease-out 0.35s both; }
+.turn__text { font-weight: 700; margin: 10px 0 0; }
 
 /* the reveal: every card turned together */
 .end--reveal { max-width: 640px; text-align: center; }
 .reveal { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 12px; padding: 0; margin: 10px 0; }
 .reveal__seat { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 84px; animation: flip 0.55s ease-out both; }
 .reveal__seat:nth-child(2) { animation-delay: 0.08s; } .reveal__seat:nth-child(3) { animation-delay: 0.16s; }
-.reveal__seat:nth-child(4) { animation-delay: 0.24s; } .reveal__seat:nth-child(5) { animation-delay: 0.32s; }
+.reveal__seat:nth-child(4) { animation-delay: 0.24s; }
 .reveal__card { width: 84px; height: auto; aspect-ratio: 300 / 428; border-radius: 6px; filter: drop-shadow(0 2px 4px rgba(43, 26, 16, 0.5)); }
 .reveal__who { font-size: 0.8rem; font-weight: 800; line-height: 1.1; overflow-wrap: anywhere; }
 .reveal__text { font-weight: 700; margin: 4px 0 0; }
@@ -377,18 +398,18 @@ body[data-busy='1'] .stage { cursor: pointer; }
 /* the reckoning: one row per seat, with the sums */
 .reck { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 6px; }
 .reck__row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; grid-template-areas: 'av who score' 'av choice total' 'av what what'; align-items: center; gap: 2px 8px; background: var(--card); border: 2px solid var(--line); border-left-width: 6px; border-radius: 12px; padding: 6px 10px 6px 8px; }
-.reck__row--home { border-left-color: var(--good); background: #eaf3e4; }
-.reck__row--fell { border-left-color: var(--accent); background: #f8e5dc; }
-.reck__row--watched { border-left-color: #66726a; }
+.reck__row--chase { border-left-color: #9e2b2b; background: #fbeee9; }
+.reck__row--watch { border-left-color: #66726a; }
 .reck__avatar { grid-area: av; width: 40px; height: 40px; }
 .reck__who { grid-area: who; display: flex; flex-direction: column; line-height: 1.15; min-width: 0; overflow-wrap: anywhere; }
 .reck__who small { color: var(--ink-soft); }
 .reck__choice { grid-area: choice; display: inline-flex; align-items: center; gap: 5px; font-size: 0.85rem; }
 .reck__what { grid-area: what; display: flex; flex-direction: column; line-height: 1.2; }
 .reck__what small { color: var(--ink-soft); }
+.reck__kept { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+.reck__keptcard { width: 40px; display: block; }
+.reck__keptimg { display: block; width: 100%; height: auto; border-radius: 3px; box-shadow: 0 1px 2px rgba(43, 26, 16, 0.5); }
 .reck__score { grid-area: score; font-family: var(--font-display); font-weight: 400; font-size: 1.7rem; text-align: right; line-height: 1; }
-.reck__row--fell .reck__score { color: var(--accent-dark); }
-.reck__row--home .reck__score { color: var(--good); }
 .reck__total { grid-area: total; font-size: 0.82rem; color: var(--ink-soft); text-align: right; }
 .reck__total b { color: var(--ink); }
 .summary { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
@@ -420,6 +441,7 @@ body[data-busy='1'] .stage { cursor: pointer; }
 @keyframes bump { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
 @keyframes callout { 0% { opacity: 0; margin-top: 8px; } 18% { opacity: 1; margin-top: 0; } 80% { opacity: 1; margin-top: -8px; } 100% { opacity: 0; margin-top: -14px; } }
 @keyframes flip { 0% { transform: rotateY(90deg) scale(0.9); opacity: 0; } 100% { transform: none; opacity: 1; } }
+@keyframes turn-round { 0% { transform: rotate(0deg); } 100% { transform: rotate(180deg); } }
 @keyframes slide-in { 0% { transform: translateX(-14px); opacity: 0; } 100% { transform: none; opacity: 1; } }
 .fx-bump { animation: bump 0.55s ease-out; }
 @media (prefers-reduced-motion: reduce) {
@@ -428,6 +450,8 @@ body[data-busy='1'] .stage { cursor: pointer; }
 
 /* ---------- wider screens ---------- */
 @media (min-width: 560px) {
+  .row__slots, .summit__row, .turn__row { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .summit__hand li { width: 60px; }
   .setup__seats { grid-template-columns: repeat(2, 1fr); }
   .reck__row { grid-template-columns: 40px minmax(0, 1.1fr) auto minmax(0, 1.5fr) auto 76px; grid-template-areas: 'av who choice what score total'; padding: 6px 12px 6px 8px; gap: 2px 10px; }
   .opps[data-opp='3'] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -441,8 +465,7 @@ body[data-busy='1'] .stage { cursor: pointer; }
   .opps { grid-template-columns: repeat(var(--opp, 2), minmax(0, 1fr)); gap: 10px; }
   .opps[data-opp='1'] { --opp: 1; max-width: 420px; justify-self: center; width: 100%; }
   .opps[data-opp='2'] { --opp: 2; } .opps[data-opp='3'] { --opp: 3; } .opps[data-opp='4'] { --opp: 4; }
-  .stage { grid-template-columns: minmax(0, 360px) minmax(0, 1fr); grid-template-areas: 'mountain trick' 'mountain colt'; grid-template-rows: auto 1fr; gap: 12px; align-items: start; }
-  .stage__colt { align-self: stretch; display: flex; align-items: center; justify-content: center; }
+  .stage { grid-template-columns: minmax(0, 360px) minmax(0, 1fr); grid-template-areas: 'mountain trick' 'mountain row'; grid-template-rows: auto 1fr; gap: 12px; align-items: start; }
   .table[data-n='5'] { --tw: 48px; } .table[data-n='4'] { --tw: 58px; }
   .table[data-n='4'] .stage { grid-template-columns: minmax(0, 330px) minmax(0, 1fr); } .table[data-n='5'] .stage { grid-template-columns: minmax(0, 310px) minmax(0, 1fr); }
   .table[data-n='4'] .tplays, .table[data-n='5'] .tplays { gap: 6px; }
@@ -471,7 +494,6 @@ body[data-busy='1'] .stage { cursor: pointer; }
   .stats svg { width: 22px; height: 22px; }
   .stats b { font-size: 1.05rem; }
   .hero__hook { font-size: 1.25rem; }
-  .colt__pile { --cw: 132px; --ch: 92px; --bw: 74px; --bh: 106px; --step: 24px; }
   .phasebar__name { font-size: 1.15rem; }
   .decide__stakes { font-size: 0.82rem; }
 }

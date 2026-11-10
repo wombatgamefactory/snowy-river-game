@@ -2,13 +2,14 @@
 // plus the How to play text that the in-game Rules dialog reuses. Pure string builders and two small
 // form helpers; main.js owns the wiring.
 // Snowy River has no Playtest switches: there is no rules panel, no rules note and no
-// variant plumbing here; every game is the standard rules.
+// variant plumbing here; every game is the standard (v5) rules. There is no rule book link: the printed
+// rule book describes the older rules, so the game's own How to play is the only rules text.
 
 import { SUITS, SUIT_NAMES, SUIT_ICONS } from '../engine/index.js';
-import { GAME_NAME, GAME_TAGLINE, RULEBOOK_URL, FOOTER_VERSION, MAX_SEATS, PLAYER_COUNTS, AT_A_GLANCE } from '../game-config.js';
+import { GAME_NAME, GAME_TAGLINE, FOOTER_VERSION, MAX_SEATS, PLAYER_COUNTS, AT_A_GLANCE } from '../game-config.js';
 import { assetUrl, img, badgeImg, esc } from './assets.js';
 
-export { RULEBOOK_URL, MAX_SEATS, PLAYER_COUNTS };
+export { MAX_SEATS, PLAYER_COUNTS };
 
 /** The bot levels offered, in menu order. A level that is not registered is shown but disabled. */
 export const LEVELS = [
@@ -20,7 +21,7 @@ export const LEVELS = [
 export const DEFAULT_SETUP = {
   players: 4,
   seats: [
-    { type: 'human', name: '' }, { type: 'easy', name: '' }, { type: 'easy', name: '' }, { type: 'easy', name: '' }, { type: 'easy', name: '' },
+    { type: 'human', name: '' }, { type: 'easy', name: '' }, { type: 'easy', name: '' }, { type: 'easy', name: '' },
   ],
   rules: {}, // always the standard rules
   autoPlayForced: false, // off by default so new players see, and click, the only card they may play
@@ -32,23 +33,22 @@ const ICON_AGE = '<svg viewBox="0 0 40 40" aria-hidden="true"><rect x="7" y="5" 
 
 // ---------- How to play ----------
 
-/** The rules in plain steps, as a new player needs them (the rule book has the rest). Keep the rule book link. */
+/** The rules in plain steps, as a new player needs them (concept v5's teach, in order). */
 export function howToPlayHtml() {
   const suits = SUITS.map((k) => `<li>${badgeImg(k, 'how__badge')}<span>${esc(SUIT_NAMES[k])} <small>${esc(SUIT_ICONS[k])}</small></span></li>`).join('');
   return `<div class="how">
-    <p class="how__lead">High wins the climb. Low wins the descent. At the summit, chase the wild mob down the mountain, or watch from the top.</p>
+    <p class="how__lead">Highest card wins, always. Going up the mountain the big horses win. At the summit everyone turns their hand round, and the weedy ponies are suddenly the best cards in the game. Every trick is a point. Then chase the mob down the mountain, or watch from the top.</p>
     <ol class="how__steps">
-      <li><h3>The cards</h3><p>48 horse cards: four suits, <b>each running 1 to 12</b> (12 is the highest card, 1 the lowest). No trumps. Every card shows its suit by colour and by a small icon.</p>
+      <li><h3>The cards</h3><p>48 horse cards: four suits, each running 1 to 12. Every card has <b>two numbers</b>: a big one at the top for the climb, and an upside-down one at the bottom for the descent. The two add up to 13, so a 12 going up is a 1 going down.</p>
         <ul class="how__suits" aria-label="The suits">${suits}</ul></li>
-      <li><h3>The deal</h3><p>2 or 3 players: 12 cards each. 4 players: 11. 5 players: 9. The rest stay out, unseen. A game is one hand per player (three hands at two players).</p></li>
-      <li><h3>Lead and follow</h3><p>The player left of the dealer leads any card. Everyone else <b>must follow suit</b> if they can; if not, they may play anything. A card of another suit can never win.</p></li>
-      <li><h3>The climb</h3><p>The <b>highest</b> card of the suit led wins. Each climb trick is worth 1 point if you keep it. After every trick the mob climbs the Mountain: 1 step, plus 1 for every card that was not of the suit led.</p></li>
-      <li><h3>The summit</h3><p>When the mob reaches the top (step 7, or step 6 with five players), everyone secretly picks <b>Chase</b> or <b>Watch</b>, and the cards are turned together. If nobody chases, the hand ends and everyone keeps their climb points.</p></li>
-      <li><h3>The descent</h3><p>Everyone plays on to the last card, and now the <b>lowest</b> card of the suit led wins. The most descent tricks puts you at the mob's heels (a tie goes to whoever won the later trick).</p></li>
-      <li><h3>Scoring</h3><p>Watch: +1 per climb trick. Chase and be at the heels: you bring the mob home for your climb tricks plus the mob (3, plus 2 for each Brumby card under the Colt). Chase and fail: you fall, <b>-1</b>. When the mob escapes, a Brumby card goes under the Colt (at most 4, so the mob is worth at most 11).</p></li>
-      <li><h3>Winning</h3><p>Highest total wins. A tie goes to whoever brought the mob home most often; still level, the win is shared.</p></li>
+      <li><h3>The deal</h3><p>Everyone gets 12 cards, climb side up. Cards not dealt stay out, unseen. A game is three hands with two or three players, four hands with four.</p></li>
+      <li><h3>The climb: six tricks</h3><p>The player left of the dealer leads. <b>Follow suit if you can;</b> otherwise play anything. <b>Escape is trumps</b> on the climb: if any Escape card is played, the highest Escape card wins. Otherwise the highest card of the suit led wins. The winner leads the next trick, and the mob climbs one step up the Mountain.</p></li>
+      <li><h3>Every trick is a point</h3><p>You keep the tricks you win in one pile, and each is worth 1 point, up or down.</p></li>
+      <li><h3>The summit</h3><p>After the sixth trick everyone <b>turns their whole hand round</b>, so the numbers that were at the bottom now count. The Mountain card turns over: <b>Home is trumps</b> from here. Six Brumby cards are laid out face up in a row, one for each descent trick, and the Colt may be among them. Everyone chooses <b>Chase</b> or <b>Watch</b> in secret, and the cards are turned together.</p></li>
+      <li><h3>Chase or Watch</h3><p><b>Watch:</b> you pay nothing and every trick is still a point. <b>Chase:</b> you pay 2 (3 with two players), and you keep the Brumby card of every descent trick you win. Most Brumby cards are worth points, a few are wombat holes or flint stones that cost you, and the Colt is worth 4.</p></li>
+      <li><h3>The descent: six tricks</h3><p>The player who won the last climb trick leads. The same rules, reading the turned numbers, with Home as trumps. The winner of each trick takes the next Brumby card from the row, left to right: a chaser keeps it, a watcher sends it off.</p></li>
+      <li><h3>Scoring and winning</h3><p>A watcher scores 1 per trick. A chaser scores 1 per trick, plus the Brumby cards they kept, minus the Chase cost, and can end a hand below zero. The Brumby deck is used up over two hands and then reshuffled. The highest total after the last hand wins. A tie goes to the most points in the last hand; if still level, the win is shared.</p></li>
     </ol>
-    <p class="how__link"><a class="btn btn--quiet" href="${RULEBOOK_URL}" target="_blank" rel="noopener" data-action="rulebook">Read the full rule book (PDF)</a></p>
   </div>`;
 }
 
@@ -105,8 +105,8 @@ export function landingHtml(levels, setup = DEFAULT_SETUP, message = '') {
       <h1 class="sr-only">${esc(GAME_NAME)}</h1>
       <div class="hero__text">
         <p class="hero__hook">${esc(GAME_TAGLINE)}</p>
-        <p class="hero__sub">A trick-taking card game from Banjo Paterson's poem, for ${esc(AT_A_GLANCE.players)} players. Whist, until the summit turns it upside down. Play against bots or pass the device to friends.</p>
-        <p class="hero__links"><a class="btn btn--quiet" href="${RULEBOOK_URL}" target="_blank" rel="noopener" data-action="rulebook">Rule book (PDF)</a><a class="btn btn--quiet" href="#how">How to play</a></p>
+        <p class="hero__sub">A trick-taking card game from Banjo Paterson's poem, for ${esc(AT_A_GLANCE.players)} players. Every hand is the ride: up the mountain the big horses win, then everyone turns their hand round and the weedy ponies take over. The mob is laid out below you, brumby by brumby, and maybe the Colt is in it. Chase it, or watch? Play against bots or pass the device to friends.</p>
+        <p class="hero__links"><a class="btn btn--quiet" href="#how">How to play</a></p>
       </div>
     </header>
     <ul class="stats" aria-label="At a glance">
