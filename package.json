@@ -8,6 +8,7 @@
     "dev": "npx http-server -p 8080 -c-1",
     "init": "node tools/init-game.mjs",
     "test": "node tests/run-all.mjs",
+    "test:engine": "node tests/run-all.mjs --engine",
     "sim": "node tests/sim.mjs",
     "test:ui": "node tests/ui-browser.mjs --require",
     "test:browser": "node tests/ui-browser.mjs --require && node tests/stats-browser.mjs --require",

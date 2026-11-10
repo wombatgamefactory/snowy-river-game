@@ -6,7 +6,10 @@ import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const SUITES = ['purity.mjs', 'rules.mjs', 'conformance.mjs', 'smoke.mjs', 'controller.mjs', 'bots.mjs', 'sim-check.mjs', 'ui-node.mjs', 'stats-node.mjs'];
+const ALL = ['purity.mjs', 'rules.mjs', 'conformance.mjs', 'smoke.mjs', 'controller.mjs', 'bots.mjs', 'sim-check.mjs', 'ui-node.mjs', 'stats-node.mjs'];
+// `--engine` (npm run test:engine): the engine suites only (purity, rules, conformance, smoke, controller).
+const ENGINE = ['purity.mjs', 'rules.mjs', 'conformance.mjs', 'smoke.mjs', 'controller.mjs'];
+const SUITES = process.argv.includes('--engine') ? ENGINE : ALL;
 let failed = 0;
 let ran = 0;
 for (const s of SUITES) {

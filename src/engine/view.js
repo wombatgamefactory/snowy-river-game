@@ -1,28 +1,30 @@
-// view.js - what one seat may know (R12), and the helpers a search bot builds worlds from.
+// view.js - what one seat may know (R10), and the helpers a search bot builds worlds from.
 //
 // viewFor(state, seat) is the ONLY thing a bot receives. It holds the seat's own hand and
-// everything public: every seat's card count, the marker, the Brumby stack and the mob's value, each
-// seat's climb and descent trick COUNTS, the current trick, this hand's completed tricks (public
-// history, R12.8), the pad. Never: another seat's cards, the cards out of play (count only, R12.7),
-// the cards of a gathered trick pile beyond the public history, or another seat's summit choice
-// before the reveal (R12.5: only whether they have locked in).
+// everything public: every seat's card count, the marker, the trump of this half, each seat's trick
+// COUNTS, the current trick (with the card winning it so far), this hand's completed tricks (public
+// history, R10.11), the face-up row, each chaser's kept Brumby cards, the public discard, the Brumby
+// deck's COUNT, the pad. Never: another seat's cards, the cards out of play (count only, R10.10), the
+// Brumby deck's order or contents as such (R10.8), or another seat's summit choice before the reveal
+// (R10.6: only whether they have locked in).
 //
 //   viewFor(state, seat)                the view
 //   legalActionsFromView(view)          the seat's legal actions, from the view alone
 //   shownVoids(view)                    suits each seat has shown it lacks (this hand)
-//   unknownCards(view)                  cards the viewer cannot place
+//   unknownCards(view)                  playing cards the viewer cannot place
+//   unseenBrumbies(view)                Brumby ids that are not face up anywhere (= the deck's contents)
 //   dealRespectingVoids(...)            GENERIC: deals a pool of unknown cards to seats, honouring voids
 //   determinise(view, rng, opts)        a complete state consistent with the view, for search bots
 
 import { SUIT_ORDER } from './rules.js';
-import { cardSuit, fullDeck, sortCards } from './cards.js';
-import { legalActionsFor } from './legality.js';
+import { cardSuit, fullDeck, sortCards, brumbyDeck, brumbyValue } from './cards.js';
+import { legalActionsFor, trickWinner } from './legality.js';
 import { forkRng, rngNext, shuffle } from './rng.js';
 
 const clone = (x) => JSON.parse(JSON.stringify(x));
 
 // Fast copies of the history records (viewFor runs at every bot decision).
-const copyPlays = (plays) => plays.map((p) => ({ seat: p.seat, card: p.card, offSuit: p.offSuit }));
+const copyPlays = (plays) => plays.map((p) => ({ seat: p.seat, card: p.card, offSuit: p.offSuit, trump: p.trump }));
 const copyTrick = (t) => ({ ...t, seats: [...t.seats], plays: copyPlays(t.plays) });
 
 function copyMeasures(m) {
@@ -33,21 +35,32 @@ function copyMeasures(m) {
 
 function copyHandRecord(h) {
   const out = { ...h };
-  for (const k of ['choices', 'chaserSeats', 'climbTricks', 'descentTricks', 'scores', 'outcomes', 'totalsAfter']) out[k] = [...h[k]];
-  out.breakdown = h.breakdown.map((b) => ({ ...b }));
+  for (const k of ['choices', 'chaserSeats', 'climbTricks', 'descentTricks', 'trickCounts', 'keptValues', 'costs', 'scores', 'row', 'rowValues', 'totalsAfter']) out[k] = [...h[k]];
+  out.kept = h.kept.map((k) => [...k]);
+  out.breakdown = h.breakdown.map((b) => ({ ...b, kept: [...b.kept] }));
   out.tricks = h.tricks.map(copyTrick);
   return out;
 }
 
 /**
  * The view of `seat` (0..n-1). Plain JSON; a fresh copy each call.
- * Summit choices (R12.5): `choices[s]` is the side for the viewer's own seat once chosen, and for every
+ * Summit choices (R10.6): `choices[s]` is the side for the viewer's own seat once chosen, and for every
  * seat after the reveal; otherwise null. `chosen[s]` (locked in, a boolean) is public.
  */
 export function viewFor(state, seat) {
   if (!Number.isInteger(seat) || seat < 0 || seat >= state.n) throw new Error(`viewFor needs a seat 0..${state.n - 1}, got ${seat}`);
   const P = state.params;
   const revealed = state.revealed;
+  const half = state.handsTurned ? 'descent' : 'climb';
+  const trump = half === 'descent' ? P.trumpDescent : P.trumpClimb;
+  const rowValues = state.row.map((id) => (id === null ? null : brumbyValue(id)));
+  const rowValue = state.rowDealt.reduce((a, id) => a + brumbyValue(id), 0);
+  let trick = null;
+  if (state.trick) {
+    trick = copyTrick(state.trick);
+    const best = trickWinner(state.trick.plays, state.trick.ledSuit, state.trick.half, state.trick.trump);
+    trick.best = best ? { ...best } : null; // R10.4 the card winning the trick so far
+  }
   return {
     kind: 'view',
     seat,
@@ -64,29 +77,38 @@ export function viewFor(state, seat) {
     dealer: state.dealer,
     leader: state.leader,
     handNo: state.handNo,
-    handSize: state.handSize,
+    handsPerGame: P.handsPerGame,
     trickNo: state.trickNo,
     descentTrickNo: state.descentTrickNo,
     marker: state.marker,
-    summitStep: P.summitStep,
-    mountainSide: P.mountainSide,
-    summitTrick: state.summitTrick,
-    forcedSummit: state.forcedSummit,
-    brumbies: state.brumbies,
-    mob: state.mob,
+    climbTricksPlayed: state.marker,
+    handsTurned: state.handsTurned,
+    half, // the half whose values count now ('descent' from the summit on)
+    trump, // the trump suit of that half
+    mountainSide: half, // 'climb' | 'descent': the side of the Mountain card showing (R1.5, R5.3)
     climbTricks: [...state.climbTricks],
     descentTricks: [...state.descentTricks],
-    lastDescentWin: [...state.lastDescentWin],
+    trickCounts: state.climbTricks.map((c, s) => c + state.descentTricks[s]),
     choices: state.choices.map((c, s) => (revealed || s === seat ? c : null)),
     chosen: state.choices.map((c) => c !== null),
     choiceOrder: [...state.choiceOrder],
     revealed,
-    stakes: { climbTricks: state.climbTricks[seat], climbPoints: state.climbTricks[seat] * P.climbTrickValue, mob: state.mob, fall: P.fallScore }, // R12.10
-    trick: state.trick ? copyTrick(state.trick) : null,
+    row: [...state.row], // 6 slots once dealt; null = taken (R10.5)
+    rowValues,
+    rowDealt: [...state.rowDealt],
+    rowValue,
+    rowNext: state.row.length ? state.descentTrickNo : null, // 0-based position of the next prize (null before the summit)
+    kept: state.kept.map((k) => [...k]), // R10.7 (only chasers ever keep)
+    keptValue: state.kept.map((k) => k.reduce((a, id) => a + brumbyValue(id), 0)),
+    discard: [...state.brumbyDiscard], // R10.9 public
+    deckCount: state.brumbyDeck.length, // R10.8 count only
+    chaseCost: P.chaseCost,
+    // R10.13 the summit stakes line for the viewer's own decision
+    stakes: { row: [...state.rowDealt], rowValues: state.rowDealt.map(brumbyValue), rowValue, chaseCost: P.chaseCost, cost: { chase: P.chaseCost, watch: 0 }, tricks: state.climbTricks[seat] },
+    trick,
     tricks: state.tricks.map(copyTrick),
     handLog: state.handLog.map(copyHandRecord),
     totals: [...state.totals],
-    mobsHome: [...state.mobsHome],
     measures: copyMeasures(state.measures),
     result: state.result ? clone(state.result) : null,
   };
@@ -101,7 +123,7 @@ export function legalActionsFromView(view) {
 
 /**
  * Suits each seat has SHOWN it lacks this hand: a card off the led suit shows a void in the led
- * suit (R12.9). Voids last the hand (cards are never drawn).
+ * suit (R10.12). Voids last the hand (cards are never drawn).
  * @returns {string[][]} by seat, in suit order
  */
 export function shownVoids(view) {
@@ -127,10 +149,20 @@ function knownCards(view) {
   return known;
 }
 
-/** Cards the viewer cannot place: other seats' hands plus the cards out of play. Sorted. */
+/** Playing cards the viewer cannot place: other seats' hands plus the cards out of play. Sorted. */
 export function unknownCards(view) {
   const known = knownCards(view);
   return sortCards(fullDeck().filter((c) => !known.has(c)));
+}
+
+/**
+ * Brumby ids that are not face up anywhere (row, kept piles, discard): exactly the deck's contents,
+ * which anyone can work out from the public cards (R10.8, R10.9). The ORDER is unknown. Sorted by id
+ * order of the deck list.
+ */
+export function unseenBrumbies(view) {
+  const seen = new Set([...view.row.filter((id) => id !== null), ...view.kept.flat(), ...view.discard]);
+  return brumbyDeck().filter((id) => !seen.has(id));
 }
 
 /**
@@ -166,9 +198,10 @@ export function dealRespectingVoids(pool, need, voids, rng, seats, suitOf = card
 /**
  * A complete game state consistent with the view, for search bots (clone it and play on with
  * applyAction). The other seats' hands are dealt uniformly from the unknown cards, respecting shown
- * voids; the rest are the cards out. Before the reveal, a seat that has locked in its summit choice
- * gets a guessed side: `opts.guessChoice(seat, view, rng)` if given, else a fair coin. Seats that
- * have not chosen yet stay null (the world asks them in turn).
+ * voids; the rest are the cards out. The Brumby deck is the unseen Brumby cards in a random order.
+ * Before the reveal, a seat that has locked in its summit choice gets a guessed side:
+ * `opts.guessChoice(seat, view, rng)` if given, else a fair coin. Seats that have not chosen yet stay
+ * null (the world asks them in turn).
  * @param {object} view
  * @param {{s:number}} rng
  * @param {{ guessChoice?: (seat:number, view:object, rng:{s:number}) => 'chase'|'watch' }} [opts]
@@ -183,20 +216,22 @@ export function determinise(view, rng, opts = {}) {
   const dealt = dealRespectingVoids(unknown, need, voids, rng, others);
   const hands = dealt.hands;
   hands[me] = [...view.hand];
+  const half = view.handsTurned ? 'descent' : 'climb';
 
   const tricks = clone(view.tricks);
-  const climbPiles = Array.from({ length: n }, () => []);
-  const descentPiles = Array.from({ length: n }, () => []);
-  for (const t of tricks) (t.phase === 'descent' ? descentPiles : climbPiles)[t.winner].push(...t.plays.map((p) => p.card));
+  const piles = Array.from({ length: n }, () => []);
+  for (const t of tricks) piles[t.winner].push(...t.plays.map((p) => p.card));
   const guess = opts.guessChoice || ((_s, _v, r) => (rngNext(r) < 0.5 ? 'chase' : 'watch'));
   const choices = view.choices.map((c, s) => {
     if (c !== null) return c;
     if (view.chosen[s]) return guess(s, view, rng);
     return null;
   });
+  const trick = view.trick ? clone(view.trick) : null;
+  if (trick) delete trick.best;
   return {
     kind: 'game',
-    schema: 1,
+    schema: 2,
     seed: 'determinised',
     n,
     rules: { ...view.rules },
@@ -208,32 +243,33 @@ export function determinise(view, rng, opts = {}) {
     firstDealer: view.firstDealer,
     dealer: view.dealer,
     handNo: view.handNo,
-    handSize: view.handSize,
     phase: view.phase,
     toAct: view.toAct,
     leader: view.leader,
-    hands: hands.map((h) => sortCards(h)),
+    handsTurned: view.handsTurned,
+    hands: hands.map((h) => sortCards(h, half)),
     out: sortCards(dealt.leftover),
-    climbPiles,
-    descentPiles,
+    piles,
     climbTricks: [...view.climbTricks],
     descentTricks: [...view.descentTricks],
-    lastDescentWin: [...view.lastDescentWin],
     marker: view.marker,
-    summitTrick: view.summitTrick,
-    forcedSummit: view.forcedSummit,
+    trickNo: view.trickNo,
+    descentTrickNo: view.descentTrickNo,
+    trick,
+    tricks,
     choices,
     choiceOrder: [...view.choiceOrder],
     revealed: view.revealed,
-    brumbies: view.brumbies,
-    mob: view.mob,
-    trickNo: view.trickNo,
-    descentTrickNo: view.descentTrickNo,
-    trick: view.trick ? clone(view.trick) : null,
-    tricks,
+    brumbyDeck: shuffle(rng, unseenBrumbies(view)),
+    brumbyDiscard: [...view.discard],
+    freshDeck: false,
+    row: [...view.row],
+    rowDealt: [...view.rowDealt],
+    rowFresh: false,
+    topHomeSeat: null,
+    kept: view.kept.map((k) => [...k]),
     handLog: clone(view.handLog),
     totals: [...view.totals],
-    mobsHome: [...view.mobsHome],
     measures: clone(view.measures),
     result: view.result ? clone(view.result) : null,
   };

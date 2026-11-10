@@ -25,11 +25,12 @@ export const CONTACT_EMAIL = 'info@wombatgamefactory.com';
 
 // The seat counts the game supports (also CONSTANTS.MIN_PLAYERS / MAX_PLAYERS in src/engine/rules.js and the
 // "Players" strip on the landing page).
-export const PLAYER_COUNTS = [2, 3, 4, 5];
-export const MAX_SEATS = 5;
+// 2 to 4 only for now: the Muster suit for 5 players has no art yet.
+export const PLAYER_COUNTS = [2, 3, 4];
+export const MAX_SEATS = 4;
 
 /** Short blurb of the At-a-glance strip. */
-export const AT_A_GLANCE = { players: '2-5', minutes: '20-30', age: '10+' };
+export const AT_A_GLANCE = { players: '2-4', minutes: '20-30', age: '10+' };
 
 /** Prefix for localStorage keys and export file names. */
 export const STORE_PREFIX = GAME_SLUG;

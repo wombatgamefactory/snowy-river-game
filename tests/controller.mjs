@@ -138,11 +138,12 @@ const newStats = () => ({ refusalMessages: 0, badAccept: 0, badRefuse: 0, turns:
   check('pass-and-play (2 humans + a bot, 8 games): every summit decision is covered, also when the same player chooses in the next hand', decisions > 30 && covered === decisions && wrongSeatShown === 0, `${covered} of ${decisions}, same seat in consecutive hands ${sameSeatTwice}, wrong seat shown ${wrongSeatShown}`);
 }
 
-// ---------- all bots, 5 seats ----------
+// ---------- all bots, 4 seats (the most there are, R1.9) ----------
 {
-  const ctl = createController({ seats: Array.from({ length: 5 }, () => ({ type: 'easy' })), seed: 'bots' });
+  const ctl = createController({ seats: Array.from({ length: 4 }, () => ({ type: 'easy' })), seed: 'bots' });
   ctl.runBots();
-  check('all bots: the game plays to the end with no human input', ctl.isFinished() && ctl.state.rulesCode === 'std' && conservation(ctl.state).ok && ctl.state.handLog.length === 5);
+  check('all bots: the game plays to the end with no human input', ctl.isFinished() && ctl.state.rulesCode === 'std' && conservation(ctl.state).ok && ctl.state.handLog.length === 4);
+  check('controller: 5 seats are refused (2 to 4 players, R1.9)', (() => { try { createController({ seats: Array.from({ length: 5 }, () => ({ type: 'easy' })), seed: 1 }); return false; } catch { return true; } })());
   check('controller: a rules switch is refused (there are none)', (() => { try { createController({ seats: [{ type: 'easy' }, { type: 'easy' }], seed: 1, rules: { TRUMP: 'red' } }); return false; } catch { return true; } })());
   check('all bots: nobody\'s hand is shown', ctl.shownSeat() === null && !ctl.needsHandoff());
 }

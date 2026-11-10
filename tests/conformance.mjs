@@ -1,25 +1,28 @@
 // conformance.mjs - replays the Python fixtures (tests/fixtures/python-conformance.json, made by a
-// script outside the repo that drives the original Python simulator unchanged with random legal play)
+// script outside the repo that drives the v5 Python simulator unchanged with random legal play and random summit choices)
 // through the JS engine, and requires identical results: the seat to play and the size of the legal
-// option set at every card, every trick winner, the summit trick, the player at the heels, the hand
-// scores, whether the mob came home, the next hand's mob, the game totals and the top-total seats.
-// Every game is replayed twice: learner style (every card clicked, legal sets compared at every
-// play) and with forced cards auto-played (the recorded plays must match the auto events).
-// Known Python differences (D1 ... D5): D1 / D2 deals were skipped by the generator; D2 in a
-// single hand that starts at the cap is checked as the cap (the rules give 11 where the Python gives
-// 13); D4 (no tiebreak in the Python) compares the Python winners with tiedOnTotal; D5 first dealer 0.
+// option set at every card, every trick winner (climb and descent), the Brumby row (values in order,
+// through the test hook `deals[h].row`), whether the row came from a fresh shuffle of all 12, the
+// summit choices, climb and descent tricks, each chaser's kept Brumby values (as a multiset) and their
+// sum, the hand scores, the game totals, the top-total seats and the winners after the last-hand tiebreak.
+// Every game is replayed twice: learner style (every card clicked, legal sets compared at every play)
+// and with forced cards auto-played (the recorded plays must match the auto events).
+// Known Python differences: D4 Brumby cards are values in the Python, so rows and
+// kept cards are compared by value; D5 the shuffle is not reproducible, so rows come in by the hook;
+// D6 the first dealer is seat 0; D7 / D8 the choices and plays are the generator's random ones.
 // Semantics: PERMANENTLY GREEN. Exit 1 on any failure.
 
 import { readFileSync } from 'node:fs';
-import { startGame, applyAction, getValidActions, fullDeck, isCardPhase } from '../src/engine/index.js';
+import { startGame, applyAction, getValidActions, fullDeck, isCardPhase, brumbyValue } from '../src/engine/index.js';
 import { suite } from './lib.mjs';
 
 const { check, done } = suite('conformance');
 const FX = JSON.parse(readFileSync(new URL('./fixtures/python-conformance.json', import.meta.url), 'utf8'));
-const DECK = fullDeck(); // fixture alphabet index = fullDeck() index (suit id x 12 + rank - 1)
+const DECK = fullDeck(); // fixture alphabet index = fullDeck() index (suit id x 12 + v - 1)
 const card = (ch) => DECK[FX.alphabet.indexOf(ch)];
 const hex = (s) => [...s].map((c) => parseInt(c, 16));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const sorted = (xs) => [...xs].sort((a, b) => a - b);
 
 let mismatches = 0;
 const firstFew = [];
@@ -28,10 +31,7 @@ function bad(id, what) {
   if (firstFew.length < 12) firstFew.push(`${id}: ${what}`);
 }
 
-/**
- * Plays one recorded hand on `state` (at the start of that hand). Returns the handLog record or null.
- * @param {boolean} manual  every card is an explicit action (legal sets compared at every play)
- */
+/** Plays one recorded hand on `state` (at the start of that hand). Returns the handLog record or null. */
 function playHand(state, fh, id, manual) {
   const plays = [...fh.p].map(card);
   const seats = [...fh.s].map(Number);
@@ -42,6 +42,7 @@ function playHand(state, fh, id, manual) {
   let guard = 0;
   while (state.handLog.length === handNo && state.toAct !== null && guard++ < 400) {
     if (state.phase === 'summit') {
+      if (!same(state.rowDealt.map(brumbyValue), fh.row)) bad(id, `row JS ${state.rowDealt.map(brumbyValue)}, Python ${fh.row}`);
       applyAction(state, { type: 'summit', choice: choices[state.toAct] });
       continue;
     }
@@ -63,63 +64,59 @@ function playHand(state, fh, id, manual) {
   if (!rec) { bad(id, 'the hand did not end'); return null; }
   const winners = rec.tricks.map((t) => t.winner).join('');
   if (winners !== fh.w) bad(id, `trick winners JS ${winners}, Python ${fh.w}`);
-  if (rec.summitTrick !== fh.k) bad(id, `summit trick JS ${rec.summitTrick}, Python ${fh.k}`);
   if (!same(rec.choices, choices)) bad(id, 'choices');
+  if (!same(rec.rowValues, fh.row)) bad(id, `row JS ${rec.rowValues}, Python ${fh.row}`);
+  if (rec.reshuffled !== (fh.f === 1)) bad(id, `fresh Brumby shuffle JS ${rec.reshuffled}, Python ${fh.f}`);
   if (!same(rec.climbTricks, hex(fh.y))) bad(id, `climb tricks JS ${rec.climbTricks}, Python ${hex(fh.y)}`);
-  const heels = rec.heelsSeat === null ? -1 : rec.heelsSeat;
-  if (heels !== fh.e) bad(id, `heels JS ${heels}, Python ${fh.e}`);
-  if (fh.x !== '' && !same(rec.descentTricks, hex(fh.x))) bad(id, `descent tricks JS ${rec.descentTricks}, Python ${hex(fh.x)}`);
-  if (fh.x === '' && rec.endReason !== 'nobody-chases') bad(id, 'Python had no descent; JS did');
-  if (rec.mobValue !== fh.m) bad(id, `mob JS ${rec.mobValue}, Python ${fh.m}`);
+  if (!same(rec.descentTricks, hex(fh.x))) bad(id, `descent tricks JS ${rec.descentTricks}, Python ${hex(fh.x)}`);
+  if (!same(rec.keptValues, fh.b)) bad(id, `kept Brumby sums JS ${rec.keptValues}, Python ${fh.b}`);
+  // kept cards as multisets of values: the Python's descent winners + row + choices (D4)
+  const pyKept = choices.map(() => []);
+  [...fh.w.slice(6)].map(Number).forEach((w, k) => { if (choices[w] === 'chase') pyKept[w].push(fh.row[k]); });
+  if (!same(rec.kept.map((k) => sorted(k.map(brumbyValue))), pyKept.map(sorted))) bad(id, `kept cards JS ${JSON.stringify(rec.kept)}, Python ${JSON.stringify(pyKept)}`);
   if (!same(rec.scores, fh.r)) bad(id, `scores JS ${rec.scores}, Python ${fh.r}`);
-  if ((rec.broughtHomeBy !== null) !== (fh.t === 1)) bad(id, `mob home JS ${rec.broughtHomeBy}, Python ${fh.t}`);
   return rec;
 }
 
 const hands = (fh) => fh.h.map((s) => [...s].map(card));
 const allSeats = (n) => Array.from({ length: n }, (_, s) => s);
 
-let games = 0; let gameDeals = 0; let singles = 0; let plays = 0; let d2Capped = 0; let d4Ties = 0; let replays = 0;
+const perCount = { 2: { games: 0, deals: 0 }, 3: { games: 0, deals: 0 }, 4: { games: 0, deals: 0 } };
+let plays = 0; let replays = 0; let tied = 0; let tiebreaks = 0; let nobody = 0; let colt = 0; let fresh = 0;
 for (const manual of [true, false]) {
   for (const fg of FX.games) {
     replays++;
     const id = `${fg.id}${manual ? '' : ' (auto)'}`;
-    const state = startGame({ seed: `fx:${fg.id}`, players: fg.n, firstDealer: fg.firstDealer, deals: fg.hands.map((fh) => ({ hands: hands(fh) })), manualSeats: manual ? allSeats(fg.n) : [] }).state;
+    let state;
+    try {
+      state = startGame({ seed: `fx:${fg.id}`, players: fg.n, firstDealer: fg.firstDealer, deals: fg.hands.map((fh) => ({ hands: hands(fh), row: fh.row })), manualSeats: manual ? allSeats(fg.n) : [] }).state;
+    } catch (e) { bad(id, `startGame threw ${e.message}`); continue; }
     let ok = true;
     for (const fh of fg.hands) {
       if (state.dealer !== fh.d) { bad(id, `dealer JS ${state.dealer}, Python ${fh.d}`); ok = false; break; }
-      if (!playHand(state, fh, `${id} hand ${state.handNo}`, manual)) { ok = false; break; }
-      // the Python's next mob is the JS mob at the next deal (D2 cannot occur in a standard game)
-      if (state.phase !== 'over' && state.mob !== fh.nm) bad(id, `next mob JS ${state.mob}, Python ${fh.nm}`);
-      if (manual) plays += fh.p.length;
+      let rec;
+      try { rec = playHand(state, fh, `${id} hand ${state.handNo}`, manual); } catch (e) { bad(id, `threw ${e.message}`); rec = null; }
+      if (!rec) { ok = false; break; }
+      if (manual) { plays += fh.p.length; if (!fh.c.includes('C')) nobody++; if (fh.row.includes(4)) colt++; fresh += fh.f; }
     }
     if (!ok) continue;
     if (state.phase !== 'over') { bad(id, 'the game did not end after the Python\'s hands'); continue; }
     if (!same(state.result.totals, fg.totals)) bad(id, `totals JS ${state.result.totals}, Python ${fg.totals}`);
-    if (!same(state.result.tiedOnTotal, fg.winners)) bad(id, `top total JS ${state.result.tiedOnTotal}, Python winners ${fg.winners}`);
-    if (manual) { games++; gameDeals += fg.hands.length; if (fg.winners.length > 1) d4Ties++; }
-  }
-  for (const fh of FX.hands) {
-    replays++;
-    const id = `${fh.id}${manual ? '' : ' (auto)'}`;
-    const state = startGame({ seed: `fx:${fh.id}`, players: fh.n, firstDealer: fh.d, deals: [{ hands: hands(fh) }], startBrumbies: fh.stack, manualSeats: manual ? allSeats(fh.n) : [] }).state;
-    const rec = playHand(state, fh, id, manual);
-    if (!rec) continue;
-    const pyStack = (fh.nm - FX.cfg.mob0) / FX.cfg.roll;
-    if (fh.d2) {
-      // D2: the Python has no cap and gives 13; the rules stop the stack at 4 (mob 11).
-      if (!(pyStack === 5 && rec.brumbiesAfter === 4 && rec.brumbyAtCap)) bad(id, `D2 cap: JS stack ${rec.brumbiesAfter}, Python ${pyStack}`);
-      if (manual) d2Capped++;
-    } else if (rec.brumbiesAfter !== pyStack) bad(id, `stack after JS ${rec.brumbiesAfter}, Python ${pyStack}`);
-    if (manual) { singles++; plays += fh.p.length; }
+    if (!same(state.result.tiedOnTotal, fg.tied)) bad(id, `top total JS ${state.result.tiedOnTotal}, Python ${fg.tied}`);
+    if (!same(state.result.winners, fg.winners)) bad(id, `winners JS ${state.result.winners}, Python ${fg.winners}`);
+    if (manual) {
+      perCount[fg.n].games++; perCount[fg.n].deals += fg.hands.length;
+      if (fg.tied.length > 1) { tied++; if (fg.winners.length < fg.tied.length) tiebreaks++; }
+    }
   }
 }
 
 console.log(`  fixture: ${FX.generator}`);
-console.log(`  replayed ${games} games (${gameDeals} deals) and ${singles} single hands, ${plays} recorded card plays, twice (learner and auto-play): ${replays} replays`);
-console.log(`  generator skipped: D1 ${FX.skipped.D1}, D2 games ${FX.skipped.D2_games}; single hands at the cap checked as the cap (D2): ${d2Capped}; games tied on the top total (D4, compared on tiedOnTotal): ${d4Ties}`);
+console.log(`  replayed ${[2, 3, 4].map((n) => `${n}p ${perCount[n].games} games / ${perCount[n].deals} deals`).join(', ')}; ${plays} recorded card plays; twice (learner and auto-play): ${replays} replays`);
+console.log(`  covered: ${nobody} nobody-chases hands, ${colt} rows with the Colt, ${fresh} rows from a fresh shuffle, ${tied} games tied on total (${tiebreaks} settled by the last hand)`);
 for (const f of firstFew) console.log(`  mismatch ${f}`);
-check('conformance: the fixture has about 300 deals per player count', [2, 3, 4, 5].every((n) => FX.counts[n].gameDeals >= 290));
-check('conformance: every recorded game and hand replays with zero mismatches', mismatches === 0, `${mismatches} mismatches`);
-check('conformance: the 4-Brumby cap is exercised against the Python (D2 single hands)', d2Capped > 0);
+check('conformance: the fixture has about 300 deals at each of 2, 3 and 4 players', [2, 3, 4].every((n) => FX.counts[n].gameDeals >= 290 && perCount[n].deals === FX.counts[n].gameDeals));
+check('conformance: the fixture has no 5-player games (R1.9)', !FX.games.some((g) => g.n === 5));
+check('conformance: every recorded game replays with zero mismatches', mismatches === 0, `${mismatches} mismatches`);
+check('conformance: the fixture exercises nobody-chases hands, the Colt, reshuffles and a last-hand tiebreak', nobody > 0 && colt > 0 && fresh > 0 && tiebreaks > 0);
 done();

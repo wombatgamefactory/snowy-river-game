@@ -3,9 +3,9 @@
 // Pure: takes data, returns strings. `names` is an optional per-seat label array supplied by
 // the UI (e.g. ['You', 'Mia', 'Easy bot 2']); without it seats are 'Seat 1', 'Seat 2', ...
 // A seat called "You" gets second-person verbs. Every line must be safe to show to the whole
-// table: 'summit-chosen' names the seat that locked in, never the side (R12.5).
+// table: 'summit-chosen' names the seat that locked in, never the side (R10.6).
 
-import { cardName } from './cards.js';
+import { cardName, brumbyName } from './cards.js';
 import { SUIT_NAMES } from './rules.js';
 
 export function seatName(seat, names) {
@@ -17,11 +17,9 @@ function verb(subject, v) {
   if (!/^You\b/.test(subject)) return v;
   if (v === 'has') return 'have';
   if (v === 'is') return 'are';
-  if (v === 'goes') return 'go';
-  if (v === 'brings') return 'bring';
-  if (v === 'falls') return 'fall';
   if (v === 'chases') return 'chase';
   if (v === 'watches') return 'watch';
+  if (v === 'sends') return 'send';
   return v.replace(/s$/, ''); // every other verb used here takes a plain -s
 }
 
@@ -34,10 +32,12 @@ function list(items) {
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
-export function describeAction(action) {
+const signed = (x) => `${x > 0 ? '+' : ''}${x}`;
+
+export function describeAction(action, half = 'climb') {
   if (!action) return '';
   switch (action.type) {
-    case 'play': return `Play ${cardName(action.card)}`;
+    case 'play': return `Play ${cardName(action.card, half)}`;
     case 'summit': return action.choice === 'chase' ? 'Chase' : 'Watch';
     default: return JSON.stringify(action);
   }
@@ -52,33 +52,31 @@ export function describeEvent(ev, names) {
   const who = (s) => seatName(s, names);
   switch (ev.type) {
     case 'game-started':
-      return `New game for ${ev.players} players: ${plural(ev.handsPerGame, 'hand', 'hands')}, the summit is step ${ev.summitStep}.`;
+      return `New game for ${ev.players} players: ${plural(ev.handsPerGame, 'hand', 'hands')}. Chase costs ${ev.chaseCost}.`;
     case 'hand-started': {
       const d = who(ev.dealer);
       const l = who(ev.leader);
-      return `Hand ${ev.handNo + 1} of ${ev.handsPerGame}: ${d} ${verb(d, 'deals')} ${ev.handSize} cards each; ${l} ${verb(l, 'leads')} the climb. The mob is worth ${ev.mob}.`;
+      return `Hand ${ev.handNo + 1} of ${ev.handsPerGame}: ${d} ${verb(d, 'deals')} ${ev.handSize} cards each; ${l} ${verb(l, 'leads')} the climb. ${SUIT_NAMES[ev.trump]} is trumps.`;
     }
     case 'card-played': {
       const s = who(ev.seat);
-      if (ev.asLeader || ev.setsSuit) return `${s} ${verb(s, 'leads')} ${cardName(ev.card)}.`;
-      if (ev.offSuit) return `${s} ${verb(s, 'has')} no ${SUIT_NAMES[ev.ledSuit]} and ${verb(s, 'plays')} ${cardName(ev.card)}.`;
-      return `${s} ${verb(s, 'plays')} ${cardName(ev.card)}.`;
+      const c = cardName(ev.card, ev.half);
+      if (ev.asLeader || ev.setsSuit) return `${s} ${verb(s, 'leads')} ${c}.`;
+      if (ev.offSuit) return `${s} ${verb(s, 'has')} no ${SUIT_NAMES[ev.ledSuit]} and ${verb(s, 'plays')} ${c}${ev.trump ? ' (trumps)' : ''}.`;
+      return `${s} ${verb(s, 'plays')} ${c}.`;
     }
     case 'trick-won': {
       const s = who(ev.winner);
-      const how = ev.phase === 'descent' ? 'lowest' : 'highest';
-      return `${s} ${verb(s, 'wins')} trick ${ev.trickNo} with ${cardName(ev.card)}: ${how} ${SUIT_NAMES[ev.ledSuit]} wins the ${ev.phase}.`;
+      const how = ev.byTrump ? `${SUIT_NAMES[ev.trump]} trumps it` : `highest ${SUIT_NAMES[ev.ledSuit]}`;
+      return `${s} ${verb(s, 'wins')} ${ev.half} trick ${ev.halfTrickNo} with ${cardName(ev.card, ev.half)} (${how}).`;
     }
-    case 'marker-moved': {
-      const extra = ev.offSuit ? ` (1 + ${ev.offSuit} off-suit)` : '';
-      if (ev.summit) {
-        if (ev.forced) return `The cards are nearly gone: the mob is driven to the summit (step ${ev.to}).`;
-        return `The mob climbs ${plural(ev.steps, 'step', 'steps')}${extra} and reaches the summit${ev.overshoot ? ', with steps to spare' : ''}.`;
-      }
-      return `The mob climbs ${plural(ev.steps, 'step', 'steps')}${extra} to step ${ev.to} of ${ev.summitStep}.`;
+    case 'marker-moved':
+      if (ev.summit) return 'The mob reaches the summit.';
+      return `The mob climbs to step ${ev.to} of ${ev.climbTricks}.`;
+    case 'summit-opened': {
+      const row = ev.row.map(brumbyName).join(', ');
+      return `The summit. Everyone turns their hand round; ${SUIT_NAMES[ev.trump]} is trumps for the descent. The row: ${row} (worth ${signed(ev.rowValue)}). Everyone chooses in secret: Chase (${-ev.chaseCost}) or Watch.`;
     }
-    case 'summit-reached':
-      return `The summit, after ${plural(ev.summitTrick, 'climb trick', 'climb tricks')}. Everyone chooses in secret: Chase or Watch. The mob is worth ${ev.mob}.`;
     case 'summit-chosen': {
       const s = who(ev.seat);
       return `${s} ${verb(s, 'has')} chosen (${ev.chosen} of ${ev.of}).`;
@@ -86,48 +84,36 @@ export function describeEvent(ev, names) {
     case 'summit-revealed': {
       const c = ev.chasers.map(who);
       const w = ev.watchers.map(who);
-      if (!c.length) return `Reveal: everyone watches.`;
+      if (!c.length) return 'Reveal: everyone watches. Every Brumby card will be sent off.';
       const parts = [`${list(c)} ${c.length === 1 ? verb(c[0], 'chases') : 'chase'}`];
       if (w.length) parts.push(`${list(w)} ${w.length === 1 ? verb(w[0], 'watches') : 'watch'}`);
       return `Reveal: ${parts.join('; ')}.`;
     }
-    case 'nobody-chased':
-      return 'Nobody chases. "We may bid the mob good day." The hand ends at once and the mob escapes.';
     case 'descent-started': {
       const l = who(ev.leader);
-      return `The descent: the lowest card of the suit led wins. ${l} ${verb(l, 'leads')}.`;
+      return `The descent: highest wins again, reading the turned numbers. ${l} ${verb(l, 'leads')}.`;
     }
-    case 'at-the-heels': {
-      const s = who(ev.seat);
-      const k = ev.descentTricks[ev.seat];
-      const tie = ev.tie ? ', and won the later descent trick of those tied' : '';
-      return `${s} ${verb(s, 'is')} at the mob's heels with ${plural(k, 'descent trick', 'descent tricks')}${tie}.`;
+    case 'brumby-kept': {
+      const s = who(ev.winner);
+      return `${s} ${verb(s, 'keeps')} ${brumbyName(ev.card)}.`;
     }
-    case 'mob-home': {
-      const s = who(ev.seat);
-      return `${s} ${verb(s, 'brings')} the mob home: ${ev.climbTricks} + ${ev.mob} = ${ev.score} points.`;
+    case 'brumby-discarded': {
+      const s = who(ev.winner);
+      return `${s} watched, so ${brumbyName(ev.card)} is sent off.`;
     }
-    case 'mob-escaped': {
-      if (ev.reason === 'watcher-at-heels') {
-        const s = who(ev.heels);
-        return `${s} watched, so the mob escapes${ev.fallen.length ? `; ${list(ev.fallen.map(who))} ${ev.fallen.length === 1 ? verb(who(ev.fallen[0]), 'falls') : 'fall'} (-1)` : ''}.`;
-      }
-      return 'The mob escapes.';
-    }
-    case 'brumby-added':
-      if (ev.added) return `A Brumby card goes under the Colt: the mob is worth ${ev.nextMob}${ev.lastHand ? ' (the game is over)' : ' next hand'}.`;
-      return `All ${ev.brumbies} Brumby cards are already under the Colt: the mob stays at ${ev.nextMob}.`;
     case 'hand-ended': {
-      const scores = ev.scores.map((x, s) => `${who(s)} ${x > 0 ? '+' : ''}${x}`).join(', ');
+      const scores = ev.scores.map((x, s) => `${who(s)} ${signed(x)}`).join(', ');
       return `Hand ${ev.handNo + 1} is over. Scores: ${scores}.`;
     }
+    case 'brumby-reshuffled':
+      return 'Fewer than 6 Brumby cards are left: all 12 are shuffled together.';
     case 'game-over': {
       const names2 = ev.winners.map(who);
-      if (ev.shared) return `Shared win: ${list(names2)} on ${ev.winningScore}${ev.tiedOnTotal.length > 1 ? `, level on mobs brought home too (${ev.mobsHome[ev.winners[0]]} each)` : ''}.`;
+      if (ev.shared) return `Shared win: ${list(names2)} on ${ev.winningScore}${ev.tiedOnTotal.length > 1 ? `, level on the last hand too (${ev.lastHandScores[ev.winners[0]]} each)` : ''}.`;
       const w = names2[0];
       if (ev.tiebreakUsed) {
-        const others = ev.tiedOnTotal.filter((s) => s !== ev.winners[0]).map((s) => ev.mobsHome[s]);
-        return `${w} ${verb(w, 'wins')} on ${ev.winningScore}, by the tiebreak: mobs brought home (${ev.mobsHome[ev.winners[0]]} against ${others.join(', ')}).`;
+        const others = ev.tiedOnTotal.filter((s) => s !== ev.winners[0]).map((s) => ev.lastHandScores[s]);
+        return `${w} ${verb(w, 'wins')} on ${ev.winningScore}, by the tiebreak: most points in the last hand (${ev.lastHandScores[ev.winners[0]]} against ${others.join(', ')}).`;
       }
       return `${w} ${verb(w, 'wins')} with ${plural(ev.winningScore, 'point', 'points')}, ${ev.margin} ahead.`;
     }

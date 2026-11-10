@@ -1,13 +1,15 @@
 // rules.js - constants and the (empty) VARIANTS table. Data only, plus resolveVariants(), rulesCode()
 // and deriveParams().
 //
-// Snowy River (rule numbers R1.1 ... R18.5 in the comments): a trick-taker for 2 to 5 players. 48 horse cards, four
-// suits (Escape, Climb, Descent, Home) ranked 1 to 12, no trumps, must follow. Each hand has a CLIMB
-// (highest card of the led suit wins; each climb trick is 1 point and moves the mob marker 1 step plus
-// 1 per off-suit card), a SUMMIT (every player secretly chooses Chase or Watch) and, if anyone chased,
-// a DESCENT (lowest card of the led suit wins; the most descent tricks puts you at the mob's heels).
+// Snowy River, v5 rules (rule numbers R1.1 ... R12.4 in the comments):
+// a trick-taker for 2 to 4 players. 48 SPLIT cards in four suits (Escape, Climb, Descent, Home); each
+// card has a climb value v (1-12) and a descent value 13 - v. Every hand is 6 CLIMB tricks (climb values,
+// Escape trumps), the SUMMIT (hands turn round, the Mountain turns, 6 Brumby cards are laid face up and
+// everyone secretly chooses Chase or Watch), then 6 DESCENT tricks (descent values, Home trumps). Highest
+// always wins; a trump played beats the led suit. Every trick is 1 point; a chaser also keeps the Brumby
+// card of each descent trick they win and pays the chase cost.
 //
-// There are NO Playtest switches: VARIANTS is empty, rules_code is always 'std'.
+// There are NO Playtest switches: VARIANTS is empty, rules_code is always 'std' (which means v5 rules).
 // resolveVariants() is kept so every caller (UI, stats, simulator) works unchanged and an unknown rule
 // name still throws.
 //
@@ -26,38 +28,45 @@ export const SUIT_NAMES = { escape: 'Escape', climb: 'Climb', descent: 'Descent'
 /** R1.2: the suit icons of the printed cards (colour-blind cue and the text-chip faces). */
 export const SUIT_ICONS = { escape: 'trophy', climb: 'stockwhip', descent: 'hat', home: 'horseshoe' };
 
-/** The phases in which a card is played (R4, R7). */
+/** The phases in which a card is played (R4, R6). */
 export const CARD_PHASES = ['climb', 'descent'];
 
-/** Tunable numbers (spec section 17). Mutable on purpose: see header. */
+/**
+ * R1.7: the Brumby deck, 12 cards. `kind` is the id stem (ids `brumby-plus2-1` ... , `brumby-flint`,
+ * `brumby-wombat-1`, `-2`, `colt`), `value` the points, `count` how many.
+ */
+export const BRUMBY_KINDS = [
+  { kind: 'brumby-plus2', name: 'Brumby', value: 2, count: 5 },
+  { kind: 'brumby-plus1', name: 'Brumby', value: 1, count: 3 },
+  { kind: 'brumby-flint', name: 'Flint stones', value: -1, count: 1 },
+  { kind: 'brumby-wombat', name: 'Wombat hole', value: -2, count: 2 },
+  { kind: 'colt', name: 'The Colt from old Regret', value: 4, count: 1 },
+];
+
+/** Tunable numbers (spec section 16). Mutable on purpose: see header. */
 export const CONSTANTS = {
-  RANK_MIN: 1,
-  RANK_MAX: 12,
+  VALUE_MIN: 1,
+  VALUE_MAX: 12,
   MIN_PLAYERS: 2,
-  MAX_PLAYERS: 5,
-  /** R3.1 cards each by player count. */
-  HAND_SIZE_BY_COUNT: { 2: 12, 3: 12, 4: 11, 5: 9 },
+  MAX_PLAYERS: 4,
+  /** R3.1 every player is dealt 12 (6 climb + 6 descent tricks). */
+  HAND_SIZE: 12,
   /** R2.1 hands per game by player count. */
-  HANDS_PER_GAME: { 2: 3, 3: 3, 4: 4, 5: 5 },
-  /** R1.5 summit step K by player count (the two-sided Mountain card). */
-  SUMMIT_BY_COUNT: { 2: 7, 3: 7, 4: 7, 5: 6 },
-  /** R4.7 the marker moves this much per climb trick, plus 1 per off-suit card. */
-  MARKER_STEP_BASE: 1,
-  /** R1.7 / R10.5 the Colt is worth this much on its own. */
-  MOB_BASE: 3,
-  /** R1.8 each Brumby card under the Colt adds this much. */
-  BRUMBY_VALUE: 2,
-  /** R10.3 at most this many Brumby cards (there are only 4). */
-  BRUMBY_MAX: 4,
-  /** R9.3 a chaser who falls scores this (and loses their climb tricks). */
-  FALL_SCORE: -1,
-  /** R4.6 each climb trick is worth this to a watcher or to the chaser who brings the mob home. */
-  CLIMB_TRICK_VALUE: 1,
-  /**
-   * Simulator probe only (an open design question): 'climb' (the standard breakaway clock) or 'fixed'
-   * (the summit comes after half the hand's tricks, floor(handSize / 2), whatever the marker says).
-   */
-  CLOCK: 'climb',
+  HANDS_PER_GAME: { 2: 3, 3: 3, 4: 4 },
+  /** R4.1 / R6 tricks in each half. */
+  CLIMB_TRICKS: 6,
+  DESCENT_TRICKS: 6,
+  /** R7.1 every trick is worth this. */
+  TRICK_POINTS: 1,
+  /** R4.4 / R6.3 trumps by half. */
+  TRUMP_CLIMB: 'escape',
+  TRUMP_DESCENT: 'home',
+  /** R5.4 Brumby cards laid out at the summit (one per descent trick). */
+  ROW_SIZE: 6,
+  /** R8.4 shuffle all 12 together when fewer than this are left in the deck. */
+  RESHUFFLE_BELOW: 6,
+  /** R5.7 the Chase cost by player count. */
+  CHASE_COST_BY_COUNT: { 2: 3, 3: 2, 4: 2 },
 };
 
 /**
@@ -68,8 +77,7 @@ export const CONSTANTS = {
  */
 
 /**
- * The Playtest rules. EMPTY: the standard rules are the only rules. Open design questions are not
- * built as switches.
+ * The Playtest rules. EMPTY (R1.12, spec section 15): the standard rules are the only rules.
  * @type {VariantDef[]}
  */
 export const VARIANTS = [];
@@ -109,8 +117,8 @@ export function resolveVariants(overrides = {}, table = VARIANTS) {
 }
 
 /**
- * The short rules code for stats and analytics. With no switches this is always 'std'; the general
- * code is kept so the shape matches the other games.
+ * The short rules code for stats and analytics. With no switches this is always 'std' (v5 rules since
+ * 10/11/2026); the general code is kept so the shape matches the other games.
  * @param {object} rules  a resolved rules object
  * @param {number} [n]    player count
  */
@@ -123,50 +131,51 @@ export function rulesCode(rules, n) {
   return parts.length ? parts.join('+') : 'std';
 }
 
-/** The mob's value with `brumbies` Brumby cards under the Colt (R10.5): 3, 5, 7, 9 or 11. */
-export function mobValueFor(params, brumbies) {
-  return params.mobBase + params.brumbyValue * brumbies;
-}
-
 /**
  * The numbers a game at player count n uses, read from CONSTANTS now (stored at state.params by
  * startGame, so a probe changes only the games created while it is set).
- * @returns {{ n:number, handSize:number, handsPerGame:number, summitStep:number, mountainSide:string,
- *   markerStepBase:number, mobBase:number, brumbyValue:number, brumbyMax:number, mobMax:number,
- *   fallScore:number, climbTrickValue:number, clock:string, fixedSummitTrick:number|null,
- *   deckSize:number, dealt:number, out:number }}
+ * Throws for a player count outside MIN_PLAYERS..MAX_PLAYERS (R1.9: 5 players are not built).
+ * @returns {{ n:number, handSize:number, handsPerGame:number, climbTricks:number, descentTricks:number,
+ *   trickPoints:number, trumpClimb:string, trumpDescent:string, rowSize:number, reshuffleBelow:number,
+ *   chaseCost:number, deckSize:number, dealt:number, out:number, brumbyCount:number }}
  */
 export function deriveParams(rules, n) {
   const C = CONSTANTS;
   if (!Number.isInteger(n) || n < C.MIN_PLAYERS || n > C.MAX_PLAYERS) {
     throw new Error(`This game needs ${C.MIN_PLAYERS} to ${C.MAX_PLAYERS} players, got ${n}`);
   }
-  const handSize = C.HAND_SIZE_BY_COUNT[n];
-  const deckSize = SUITS.length * (C.RANK_MAX - C.RANK_MIN + 1);
+  const handSize = C.HAND_SIZE;
+  const deckSize = SUITS.length * (C.VALUE_MAX - C.VALUE_MIN + 1);
   const dealt = n * handSize;
-  if (!Number.isInteger(handSize) || dealt > deckSize || handSize < 2) throw new Error(`Hand size ${handSize} x ${n} players does not fit the deck`);
-  const summitStep = C.SUMMIT_BY_COUNT[n];
-  if (!Number.isInteger(summitStep) || summitStep < 1) throw new Error(`Summit step must be a positive integer, got ${summitStep}`);
+  if (!Number.isInteger(handSize) || dealt > deckSize) throw new Error(`Hand size ${handSize} x ${n} players does not fit the deck`);
+  if (C.CLIMB_TRICKS + C.DESCENT_TRICKS !== handSize) throw new Error(`CLIMB_TRICKS + DESCENT_TRICKS must equal HAND_SIZE (${handSize})`);
+  if (C.ROW_SIZE !== C.DESCENT_TRICKS) throw new Error('ROW_SIZE must equal DESCENT_TRICKS (one Brumby card per descent trick)');
   const handsPerGame = C.HANDS_PER_GAME[n];
   if (!Number.isInteger(handsPerGame) || handsPerGame < 1) throw new Error(`Hands per game must be a positive integer, got ${handsPerGame}`);
-  if (!['climb', 'fixed'].includes(C.CLOCK)) throw new Error(`CLOCK must be 'climb' or 'fixed', got ${JSON.stringify(C.CLOCK)}`);
+  const chaseCost = C.CHASE_COST_BY_COUNT[n];
+  if (!Number.isInteger(chaseCost)) throw new Error(`No chase cost for ${n} players`);
+  const brumbyCount = BRUMBY_KINDS.reduce((a, k) => a + k.count, 0);
+  if (C.RESHUFFLE_BELOW > brumbyCount || C.ROW_SIZE > brumbyCount) throw new Error('The Brumby deck is too small for the row');
   return {
     n,
     handSize,
     handsPerGame,
-    summitStep,
-    mountainSide: `0-${summitStep}`, // R1.5: '0-7' for 2-4 players, '0-6' for 5
-    markerStepBase: C.MARKER_STEP_BASE,
-    mobBase: C.MOB_BASE,
-    brumbyValue: C.BRUMBY_VALUE,
-    brumbyMax: C.BRUMBY_MAX,
-    mobMax: C.MOB_BASE + C.BRUMBY_VALUE * C.BRUMBY_MAX,
-    fallScore: C.FALL_SCORE,
-    climbTrickValue: C.CLIMB_TRICK_VALUE,
-    clock: C.CLOCK,
-    fixedSummitTrick: C.CLOCK === 'fixed' ? Math.max(1, Math.floor(handSize / 2)) : null,
+    climbTricks: C.CLIMB_TRICKS,
+    descentTricks: C.DESCENT_TRICKS,
+    trickPoints: C.TRICK_POINTS,
+    trumpClimb: C.TRUMP_CLIMB,
+    trumpDescent: C.TRUMP_DESCENT,
+    rowSize: C.ROW_SIZE,
+    reshuffleBelow: C.RESHUFFLE_BELOW,
+    chaseCost,
     deckSize,
     dealt,
     out: deckSize - dealt,
+    brumbyCount,
   };
+}
+
+/** The trump suit of a half: 'climb' -> Escape, 'descent' -> Home (R4.4, R6.3). */
+export function trumpFor(params, half) {
+  return half === 'descent' ? params.trumpDescent : params.trumpClimb;
 }
