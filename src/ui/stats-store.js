@@ -3,34 +3,40 @@
 // works unchanged when storage is blocked, full or throwing: the store then just forgets.
 //
 // One key, `<slug>-stats-v1`, holds { v: 1, games: [...] }, newest last, capped at MAX_GAMES
-// (oldest dropped).
+// (oldest dropped). The key and envelope are unchanged since the v4 game; the RULES changed, and that
+// is carried by each record's rules_version / rules_code (see migrate()).
 //
-// Game record (schema 1), one per finished game:
+// Game record, one per finished game:
 //   v, id, date (ISO), players, seed (string),
-//   rules {} (no switches), rules_code (always 'std'),
+//   rules {} (no switches), rules_version (5 = the split-card game; 4 = the old summit-steps game),
+//   rules_code ('std' = the current rules, i.e. v5; migrate() relabels records of the v4 game 'v4'),
 //   seats [{ seat, type: 'human'|'bot', level: null|'easy'|'medium'|'hard', name? }]  (name only for a
 //     human who typed one),
 //   hand_scores [[score by seat] by hand], hand_log [per hand, see handRecord],
-//   totals [by seat], ranking [{ seat, total, mobs_home (the tiebreak), rank }],
-//   winners [seats], shared, tiebreak_used (mobs brought home separated seats tied on the top total),
+//   totals [by seat], last_hand_scores [by seat], ranking [{ seat, total, last_hand_score, rank }],
+//   winners [seats], shared, tiebreak_used (the last hand separated seats tied on the top total),
 //   tied_on_total (two or more seats level on the top total),
 //   winning_score, margin, hands, tricks, seconds,
-//   Snowy River's own counts: mobs_home (hands a chaser brought the mob home), mobs_home_by_seat (the
-//     tiebreak, by seat), escapes (hands the mob escaped: nobody chased or a watcher at the heels),
-//     nobody_chased (hands that ended at the summit), chases (chasers over all hands), falls (chasers
-//     who fell), chases_by_seat, falls_by_seat.
+//   v5 counts: chases (chasers over all hands), chases_by_seat, nobody_chased (hands nobody chased),
+//     chaser_counts (index = how many chased, value = hands), kept_value (Brumby value kept by chasers),
+//     colt_rows (hands the Colt was in the row), colt_kept (hands a chaser kept it).
 //
-// Hand record (hand_log entry, see handRecord): end_reason ('descent' | 'nobody-chases'), outcome
-//   ('home' | 'escaped-watcher' | 'nobody-chased'), summit_reached, summit_trick (climb tricks played
-//   when the summit came), forced_summit, tricks, mob_value, brumbies_before / brumbies_after, brumby_added,
-//   choices ('C'/'W' by seat), chasers (count), chaser_seats, watcher_seats, heels (seat or null),
-//   tie_at_heels, home (seat or null), falls, climb_tricks / descent_tricks / outcomes / scores by seat.
+// Hand record (hand_log entry, see handRecord): choices ('C'/'W' by seat as one string), chasers (count),
+//   chaser_seats, watcher_seats, climb_tricks / descent_tricks / tricks_by_seat (tricks won, by seat),
+//   kept (Brumby ids kept, by seat), kept_values (their value, by seat), costs (chase cost paid, by seat),
+//   scores (hand total, by seat), row (6 ids), row_value, colt (in the row), colt_trick (1..6 | null),
+//   colt_winner (seat | null), colt_kept, top_home_seat, reshuffled, tricks (tricks played, 12).
+//   Records of the v4 game keep their own hand fields (end_reason, mob_value, outcome ...).
 
 import { VARIANTS, DEFAULT_RULES } from '../engine/index.js';
 import { STORE_PREFIX } from '../game-config.js';
 
 export const STORE_KEY = `${STORE_PREFIX}-stats-v1`;
 export const STORE_VERSION = 1;
+/** The rules this build plays. Written to every new record as rules_version. */
+export const RULES_VERSION = 5;
+/** The rules_code given to records written by the v4 game, so they are never mixed with today's 'std'. */
+export const V4_CODE = 'v4';
 export const MAX_GAMES = 2000;
 
 const empty = () => ({ v: STORE_VERSION, games: [] });
@@ -49,7 +55,7 @@ export function createStatsStore(getStorage = defaultStorage) {
       if (!raw) return empty();
       const data = JSON.parse(raw);
       if (!data || data.v !== STORE_VERSION) return empty();
-      return { v: STORE_VERSION, games: Array.isArray(data.games) ? data.games.filter(isRecord) : [] };
+      return { v: STORE_VERSION, games: Array.isArray(data.games) ? data.games.filter(isRecord).map(migrate) : [] };
     } catch { return empty(); }
   }
 
@@ -79,6 +85,18 @@ export function createStatsStore(getStorage = defaultStorage) {
   };
 }
 
+/**
+ * Relabels records written by the v4 game (rules before 10/11/2026: summit steps, the mob, low wins).
+ * Those records have no rules_version, so a record without one is a v4 record: it gets rules_version 4
+ * and rules_code 'v4' (the stats screen then lists it apart from 'std', which now means v5). A record that
+ * already has a rules_version is returned as it is (the same object), so migrating twice changes nothing.
+ * Never mutates its argument; never throws.
+ */
+export function migrate(g) {
+  if (!g || typeof g !== 'object' || g.rules_version !== undefined) return g;
+  return { ...g, rules_version: 4, rules_code: V4_CODE };
+}
+
 /** A record read back from storage is trusted only as far as the summary needs. */
 function isRecord(g) {
   return !!g && typeof g === 'object' && Array.isArray(g.seats) && Array.isArray(g.totals)
@@ -90,39 +108,31 @@ function isRecord(g) {
 /** 'human' or the bot level: the "seat kind" the stats are split by. */
 export const seatKind = (s) => (s.type === 'human' ? 'human' : (s.level || 'bot'));
 
-/** 'home' | 'escaped-watcher' | 'nobody-chased' from a state.handLog entry. */
-export function handOutcome(h) {
-  if (h.broughtHomeBy !== null && h.broughtHomeBy !== undefined) return 'home';
-  return h.chasers === 0 ? 'nobody-chased' : 'escaped-watcher';
-}
-
-/** One hand's breakdown from a state.handLog entry. */
+/** One hand's breakdown from a state.handLog entry (v5). */
 export function handRecord(h) {
   const choices = h.choices.map((c) => (c === 'chase' ? 'C' : 'W'));
   const seatsOf = (letter) => choices.map((c, i) => (c === letter ? i : -1)).filter((i) => i >= 0);
   return {
-    end_reason: h.endReason,
-    outcome: handOutcome(h),
-    summit_reached: h.summitTrick !== null && h.summitTrick !== undefined,
-    summit_trick: h.summitTrick,
-    forced_summit: !!h.forcedSummit,
-    tricks: Array.isArray(h.tricks) ? h.tricks.length : 0,
-    mob_value: h.mobValue,
-    brumbies_before: h.brumbiesBefore,
-    brumbies_after: h.brumbiesAfter,
-    brumby_added: !!h.brumbyAdded,
     choices: choices.join(''),
     chasers: h.chasers,
     chaser_seats: seatsOf('C'),
     watcher_seats: seatsOf('W'),
     climb_tricks: [...h.climbTricks],
     descent_tricks: [...h.descentTricks],
-    outcomes: [...h.outcomes],
-    heels: h.heelsSeat,
-    tie_at_heels: !!h.tieAtHeels,
-    home: h.broughtHomeBy,
-    falls: h.falls,
+    tricks_by_seat: [...h.trickCounts],
+    kept: h.kept.map((k) => [...k]),
+    kept_values: [...h.keptValues],
+    costs: [...h.costs],
     scores: [...h.scores],
+    row: [...h.row],
+    row_value: h.rowValue,
+    colt: !!h.colt,
+    colt_trick: h.coltTrick,
+    colt_winner: h.coltWinner,
+    colt_kept: !!h.coltKept,
+    top_home_seat: h.topHomeSeat,
+    reshuffled: !!h.reshuffled,
+    tricks: Array.isArray(h.tricks) ? h.tricks.length : 0,
   };
 }
 
@@ -147,6 +157,7 @@ export function createRecorder(store, now = () => Date.now()) {
         players: st.n,
         seed: String(info.seed),
         rules: { ...st.rules },
+        rules_version: RULES_VERSION,
         rules_code: st.rulesCode,
         seats: info.seats.map((s, i) => {
           const human = s.type === 'human';
@@ -157,7 +168,8 @@ export function createRecorder(store, now = () => Date.now()) {
         hand_scores: st.handLog.map((h) => [...h.scores]),
         hand_log: st.handLog.map(handRecord),
         totals: [...res.totals],
-        ranking: res.ranking.map((r) => ({ seat: r.seat, total: r.total, mobs_home: r.mobsHome, rank: r.rank })),
+        last_hand_scores: [...res.lastHandScores],
+        ranking: res.ranking.map((r) => ({ seat: r.seat, total: r.total, last_hand_score: r.lastHandScore, rank: r.rank })),
         winners: [...res.winners],
         shared: !!res.shared,
         tiebreak_used: !!res.tiebreakUsed,
@@ -166,14 +178,13 @@ export function createRecorder(store, now = () => Date.now()) {
         margin: res.margin,
         hands: st.handLog.length,
         tricks: m.tricks,
-        mobs_home: m.mobsHome,
         nobody_chased: m.nobodyChased,
-        mobs_home_by_seat: [...m.mobsHomeBySeat],
-        escapes: m.escapes,
         chases: m.chasesBySeat.reduce((a, b) => a + b, 0),
-        falls: m.falls,
         chases_by_seat: [...m.chasesBySeat],
-        falls_by_seat: [...m.fallsBySeat],
+        chaser_counts: [...m.chaserCounts],
+        kept_value: m.keptValue,
+        colt_rows: m.coltRows,
+        colt_kept: m.coltKept,
         seconds: gameStartedAt === null ? 0 : Math.max(0, Math.round((now() - gameStartedAt) / 1000)),
       };
       store.addGame(rec);
@@ -186,13 +197,13 @@ export function createRecorder(store, now = () => Date.now()) {
 
 const SEAT_COLS = [1, 2, 3, 4, 5].flatMap((n) => [`seat${n}_type`, `seat${n}_name`]);
 /** Snowy River's own CSV columns after the shared ones (the matching cells are in gameToRow). */
-const GAME_COLUMNS = ['tricks', 'mobs_home', 'mobs_home_by_seat', 'escapes', 'nobody_chased', 'chases', 'falls', 'hand_outcomes'];
+const GAME_COLUMNS = ['tricks', 'nobody_chased', 'chases', 'chases_by_seat', 'kept_value', 'colt_rows', 'colt_kept', 'hand_choices', 'hand_row_values'];
 export const CSV_COLUMNS = [
-  'date', 'id', 'seed', 'players', 'rules_code',
+  'date', 'id', 'seed', 'players', 'rules_code', 'rules_version',
   ...VARIANTS.map((v) => `rule_${v.name.toLowerCase()}`),
   ...SEAT_COLS,
   'hands', 'hand_scores', 'totals', 'ranks', 'winner_seats', 'shared_win', 'tiebreak_used', 'tied_on_total',
-  'winning_score', 'margin', ...GAME_COLUMNS, 'hand_end_reasons', 'duration_seconds',
+  'winning_score', 'margin', ...GAME_COLUMNS, 'duration_seconds',
 ];
 
 export function csvCell(v) {
@@ -212,13 +223,13 @@ export function gameToRow(r) {
   const rules = r.rules || {};
   const ranks = [...(r.ranking || [])].sort((a, b) => a.seat - b.seat).map((x) => x.rank);
   return [
-    r.date, r.id, r.seed, r.players, r.rules_code,
+    r.date, r.id, r.seed, r.players, r.rules_code, r.rules_version,
     ...VARIANTS.map((v) => (rules[v.name] !== undefined ? rules[v.name] : DEFAULT_RULES[v.name])),
     ...seatCells,
     r.hands, (r.hand_scores || []).map((h) => h.join(' ')).join('|'), join(r.totals), ranks.join(' '),
     r.winners.map((s) => s + 1).join(' '), bool(r.shared), bool(r.tiebreak_used), bool(r.tied_on_total),
-    r.winning_score, r.margin, r.tricks, r.mobs_home, join(r.mobs_home_by_seat), r.escapes, r.nobody_chased, r.chases, r.falls,
-    (r.hand_log || []).map((h) => h.outcome).join(' '), (r.hand_log || []).map((h) => h.end_reason).join(' '), r.seconds,
+    r.winning_score, r.margin, r.tricks, r.nobody_chased, r.chases, join(r.chases_by_seat), r.kept_value, r.colt_rows, r.colt_kept,
+    (r.hand_log || []).map((h) => h.choices).join(' '), (r.hand_log || []).map((h) => h.row_value).join(' '), r.seconds,
   ];
 }
 
@@ -248,12 +259,15 @@ const tally = () => ({ seats: 0, wins: 0 });
 /**
  * Pure aggregation for the stats screen. `filter` is 'all' or a rules_code; the by-rules table
  * always covers every game so the codes can be compared side by side.
- * `extra` holds Snowy River's own totals (shown in stats-view.js), counted from each hand_log entry:
- * hands, tricks, mobsHome, escapes, nobodyChased, chases (chasers), falls, and the human seats' own
- * Chase numbers (humanHands, humanChases, humanHomes).
+ * `extra` holds the v5 totals (shown in stats-view.js), counted from each v5 hand_log entry and never
+ * from a v4 record: seatHands (a seat in a hand), hands, tricks, chases (chasers), nobodyChased, keptValue
+ * (Brumby value kept by chasers), keptCards, chaserNet (their hand totals), coltRows, coltKept, coltByKind,
+ * coltTopHome (Colt trick won by the top Home holder), humanHands / humanChases (the human seats' own Chase
+ * numbers). `extra4` holds the v4 game's totals (hands, tricks, mobsHome, escapes, nobodyChased, chases,
+ * falls) for records relabelled 'v4'.
  */
 export function summarise(allGames, filter = 'all') {
-  const games = (allGames || []).filter(isRecord);
+  const games = (allGames || []).filter(isRecord).map(migrate);
   const sel = filter === 'all' ? games : games.filter((g) => g.rules_code === filter);
 
   const byKind = Object.fromEntries(KINDS.map((k) => [k, tally()]));
@@ -262,8 +276,8 @@ export function summarise(allGames, filter = 'all') {
   const byPlayers = {};
   const ties = { games: sel.length, tied: 0, tiebreak: 0, shared: 0 };
   let handsScored = 0; let scoreSum = 0; let marginSum = 0;
-  let hands = 0; let tricks = 0; let mobsHome = 0; let nobodyChased = 0;
-  let escapes = 0; let chases = 0; let falls = 0; let humanHands = 0; let humanChases = 0; let humanHomes = 0;
+  const ex = { seatHands: 0, hands: 0, tricks: 0, chases: 0, nobodyChased: 0, keptValue: 0, keptCards: 0, chaserNet: 0, coltRows: 0, coltKept: 0, coltTopHome: 0, coltByKind: {}, humanHands: 0, humanChases: 0 };
+  const ex4 = { hands: 0, tricks: 0, mobsHome: 0, escapes: 0, nobodyChased: 0, chases: 0, falls: 0 };
 
   for (const g of sel) {
     const won = new Set(g.winners);
@@ -287,18 +301,40 @@ export function summarise(allGames, filter = 'all') {
     p.marginSum += g.margin || 0; p.winSum += g.winning_score || 0;
     for (const h of g.hand_scores || []) for (const x of h) { p.hands++; p.scoreSum += x; handsScored++; scoreSum += x; }
     marginSum += g.margin || 0;
-    hands += g.hands || 0; tricks += g.tricks || 0; mobsHome += g.mobs_home || 0; nobodyChased += g.nobody_chased || 0;
-    for (const h of Array.isArray(g.hand_log) ? g.hand_log : []) {
-      const ch = typeof h.choices === 'string' ? h.choices : '';
-      if (h.outcome && h.outcome !== 'home') escapes++;
-      for (let i = 0; i < ch.length; i++) {
-        if (ch[i] === 'C') chases++;
-        if (kinds[i] === 'human') {
-          humanHands++;
-          if (ch[i] === 'C') { humanChases++; if (h.home === i) humanHomes++; }
+    const log = Array.isArray(g.hand_log) ? g.hand_log : [];
+    if (g.rules_version === 4) {
+      ex4.hands += g.hands || 0; ex4.tricks += g.tricks || 0; ex4.mobsHome += g.mobs_home || 0; ex4.nobodyChased += g.nobody_chased || 0;
+      for (const h of log) {
+        if (h.outcome && h.outcome !== 'home') ex4.escapes++;
+        ex4.chases += typeof h.choices === 'string' ? h.choices.split('C').length - 1 : 0;
+        if (Array.isArray(h.outcomes)) ex4.falls += h.outcomes.filter((o) => o === 'fell').length;
+      }
+    } else {
+      ex.hands += log.length; ex.tricks += g.tricks || 0;
+      for (const h of log) {
+        const ch = typeof h.choices === 'string' ? h.choices : '';
+        if (h.chasers === 0) ex.nobodyChased++;
+        for (let i = 0; i < ch.length; i++) {
+          ex.seatHands++;
+          const human = kinds[i] === 'human';
+          if (human) ex.humanHands++;
+          if (ch[i] !== 'C') continue;
+          ex.chases++;
+          if (human) ex.humanChases++;
+          ex.keptValue += (h.kept_values && h.kept_values[i]) || 0;
+          ex.keptCards += (h.kept && h.kept[i] ? h.kept[i].length : 0);
+          ex.chaserNet += (h.scores && h.scores[i]) || 0;
+        }
+        if (h.colt) {
+          ex.coltRows++;
+          if (h.colt_kept) ex.coltKept++;
+          if (h.colt_winner !== null && h.colt_winner !== undefined) {
+            const k = kinds[h.colt_winner] || 'bot';
+            ex.coltByKind[k] = (ex.coltByKind[k] || 0) + 1;
+            if (h.colt_winner === h.top_home_seat) ex.coltTopHome++;
+          }
         }
       }
-      if (Array.isArray(h.outcomes)) falls += h.outcomes.filter((o) => o === 'fell').length;
     }
     if (g.tied_on_total) ties.tied++;
     if (g.tiebreak_used) ties.tiebreak++;
@@ -323,7 +359,7 @@ export function summarise(allGames, filter = 'all') {
     filter,
     codes: byRules.map((r) => ({ code: r.code, games: r.games })),
     byKind, bySeat, humanVs, byPlayers, ties, byRules,
-    extra: { hands, tricks, mobsHome, escapes, nobodyChased, chases, falls, humanHands, humanChases, humanHomes },
+    extra: ex, extra4: ex4,
     avgScorePerHand: handsScored ? scoreSum / handsScored : null,
     avgMargin: sel.length ? marginSum / sel.length : null,
   };

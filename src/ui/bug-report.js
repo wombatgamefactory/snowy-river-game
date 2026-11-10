@@ -91,7 +91,7 @@ function diagnosticSeat(ctl) {
 }
 
 /**
- * What helps reproduce a Snowy River report: the phase, the marker and summit steps, the Brumby stack,
+ * What helps reproduce a Snowy River report: the phase, the marker (climb tricks played), the Brumby row, kept cards and deck counts,
  * the summit choices (only the values once revealed; before that, who has chosen), the counts so far,
  * and the engine's block reason for every card in the diagnostic seat's hand (null = the engine says
  * it was legal, so a refusal would be a UI problem).
@@ -110,11 +110,9 @@ function diagnostics(state, ctl) {
     snowy: {
       handNo: state.handNo,
       phase: state.phase,
+      half: state.phase === 'descent' ? 'descent' : 'climb',
+      handsTurned: state.handsTurned,
       marker: state.marker,
-      summitStep: state.params.summitStep,
-      summitTrick: state.summitTrick,
-      brumbies: state.brumbies,
-      mob: state.mob,
       trickNo: state.trickNo,
       descentTrickNo: state.descentTrickNo,
       leader: state.leader,
@@ -125,8 +123,11 @@ function diagnostics(state, ctl) {
       chosen: state.choices.map((c) => c !== null),
       choicesRevealed: state.revealed ? state.choices : null,
       choiceOrder: state.choiceOrder,
+      row: state.row,
+      kept: state.kept,
+      brumbyDeckCount: state.brumbyDeck.length,
+      brumbyDiscardCount: state.brumbyDiscard.length,
       totals: state.totals,
-      mobsHome: state.mobsHome,
     },
     cards: state.hands[seat].map((card) => ({
       card,

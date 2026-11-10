@@ -1,10 +1,11 @@
 /**
  * Google Analytics events. Everything sent is anonymous: no names, no free text, no seed.
  * game_end carries one anonymous result summary per finished game: which kind of seat won
- * (human / easy / medium / hard / shared), the winning score and margin, whether the mobs-home
- * tiebreak decided it (tiebreak_used), the best human rank, and Snowy River's three counts: hands the mob
- * came home (mobs_home), hands it escaped (escapes) and hands nobody chased (nobody_chased).
- * hand_end carries the same three as 0 or 1 for that hand, which is how it says what happened.
+ * (human / easy / medium / hard / shared), the winning score and margin, whether the last-hand
+ * tiebreak decided it (tiebreak_used), the best human rank, and Snowy River's v5 counts: hands nobody
+ * chased (nobody_chased), chasers over the whole game (chasers) and the Brumby value chasers kept
+ * (kept_value). hand_end carries the same for that hand (nobody_chased as 0 or 1, chasers as a count)
+ * plus the value of the Brumby row (row_value).
  *
  * track() drops any parameter that is not on ALLOWED_PARAMS and any value that is not a finite
  * number or a short token (letters, digits and _ , . + -), so a future edit cannot leak a name or a
@@ -12,14 +13,16 @@
  *
  *   game_start, hand_end, game_end, game_abandoned     one game
  *   stats_viewed, stats_exported                       the local stats screen
- *   rules_opened                                       How to play dialog or rule book link
-
- * There is no variant_changed event: Snowy River has no Playtest switches and rules_code is always 'std'.
+ *   rules_opened                                       How to play dialog (there is no rule book link)
+ *
+ * There is no variant_changed event: Snowy River has no Playtest switches. rules_code is always 'std',
+ * which means the v5 rules from the publish date of 10/11/2026 (it meant the v4 rules before).
  *
  * Every call is a no-op when gtag is missing (ad blocker, banner refusal, tests), and a failure
  * here never reaches the game. The page loads GA only off localhost (index.html).
- * New parameters (register all three as custom metrics in GA): mobs_home, escapes, nobody_chased.
- * mobs_home is NOT shared with the other games: the starter kit's slot was trump_trick_pct, which this game replaced.
+ * v5 changes against v4: removed mobs_home and escapes (the mob is gone); kept nobody_chased; new
+ * chasers, row_value, kept_value (register all three as custom metrics in GA). mobs_home is NOT shared
+ * with the other games: the starter kit's slot was trump_trick_pct.
  */
 
 import { GAME_SLUG } from '../game-config.js';
@@ -29,8 +32,8 @@ export const GAME_NAME = GAME_SLUG;
 export const ALLOWED_PARAMS = [
   'game_name', 'player_count', 'human_players', 'bot_players', 'bot_levels', 'rules_code',
   'hand_number', 'hands', 'tricks', 'duration_seconds',
-  'winner_seat_type', 'winning_score', 'winning_margin', 'tiebreak_used', 'human_rank', 'mobs_home',
-  'escapes', 'nobody_chased',
+  'winner_seat_type', 'winning_score', 'winning_margin', 'tiebreak_used', 'human_rank', 'nobody_chased',
+  'chasers', 'row_value', 'kept_value',
 ];
 
 export const EVENT_NAMES = [
@@ -97,12 +100,10 @@ export function trackTrickEnd() {
   try { if (game) game.tricks += 1; } catch { /* silent */ }
 }
 
-/** The hand's outcome as 0/1 counts on the new param names: mobs_home, escapes, nobody_chased. */
+/** The hand's v5 outcome: nobody_chased (0 or 1), chasers (count) and row_value (the Brumby row's total). */
 export function handOutcomeParams(rec) {
   if (!rec || !Array.isArray(rec.choices)) return {};
-  const home = rec.broughtHomeBy !== null && rec.broughtHomeBy !== undefined;
-  const nobody = rec.chasers === 0;
-  return { mobs_home: home ? 1 : 0, escapes: home ? 0 : 1, nobody_chased: nobody ? 1 : 0 };
+  return { nobody_chased: rec.chasers === 0 ? 1 : 0, chasers: rec.chasers, row_value: rec.rowValue };
 }
 
 export function trackHandEnd(info) {
@@ -134,9 +135,9 @@ export function resultSummary(info) {
     winning_margin: res.margin,
     tiebreak_used: res.tiebreakUsed ? 'yes' : 'no',
     human_rank: humanRanks.length ? Math.min(...humanRanks) : undefined,
-    mobs_home: st ? st.measures.mobsHome : undefined,
-    escapes: st ? st.measures.escapes : undefined,
     nobody_chased: st ? st.measures.nobodyChased : undefined,
+    chasers: st ? st.measures.chasesBySeat.reduce((a, b) => a + b, 0) : undefined,
+    kept_value: st ? st.measures.keptValue : undefined,
     tricks,
   };
 }

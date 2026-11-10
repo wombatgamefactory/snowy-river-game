@@ -6,10 +6,9 @@
 import { suite, roundTrip } from './lib.mjs';
 import {
   createStatsStore, createRecorder, handRecord, toCsv, toJson, exportFilename, csvCell, gameToRow, CSV_COLUMNS, summarise, seatKind,
-  STORE_KEY, MAX_GAMES,
+  STORE_KEY, MAX_GAMES, migrate, RULES_VERSION, V4_CODE,
 } from '../src/ui/stats-store.js';
-import { handOutcome } from '../src/ui/stats-store.js';
-import { statsHtml, statsButtonsHtml } from '../src/ui/stats-view.js';
+import { statsHtml, statsButtonsHtml, effectiveFilter } from '../src/ui/stats-view.js';
 import * as analytics from '../src/ui/analytics.js';
 import * as bug from '../src/ui/bug-report.js';
 import { createController } from '../src/ui/controller.js';
@@ -54,19 +53,22 @@ function finishedGame(seed, seatTypes, rules = {}) {
   check('recorder: the record is plain JSON and equals what the store reads back', JSON.stringify(roundTrip(r)) === JSON.stringify(store.load().games[0]));
   check('recorder: one hand breakdown per hand', r.hand_log.length === 4 && r.hand_log.every((h) => h.climb_tricks.length === 4 && h.descent_tricks.length === 4 && h.scores.length === 4 && h.choices.length === 4) && handRecord(g.state.handLog[0]).scores.length === 4);
   check('recorder: an unfinished game records nothing', rec.gameEnd({ state: createController({ seats: [{ type: 'human' }, { type: 'easy' }], seed: 1 }).state, seats: [], seed: 1 }) === null);
-  // Snowy River's own fields, cross-checked against the engine's result
   const st = g.state;
   const hl = r.hand_log;
   const sumBy = (rows, i) => rows.reduce((a, row) => a + row[i], 0);
+  check('record: rules_version 5 and rules_code std', r.rules_version === RULES_VERSION && RULES_VERSION === 5 && r.rules_code === 'std');
   check('record: hand scores add up to the totals and the engine result', r.totals.every((t, i) => t === sumBy(r.hand_scores, i) && t === st.result.totals[i] && t === st.totals[i]));
-  check('record: mobs home (total and by seat) match the engine and the hand log', r.mobs_home === st.measures.mobsHome && r.mobs_home === hl.filter((h) => h.outcome === 'home').length && JSON.stringify(r.mobs_home_by_seat) === JSON.stringify(st.mobsHome) && r.mobs_home === r.mobs_home_by_seat.reduce((a, b) => a + b, 0) && r.ranking.every((x) => x.mobs_home === st.mobsHome[x.seat]));
-  check('record: escapes + mobs home = hands; nobody-chased hands match', r.escapes === st.measures.escapes && r.escapes + r.mobs_home === r.hands && r.nobody_chased === hl.filter((h) => h.outcome === 'nobody-chased').length && r.nobody_chased === st.measures.nobodyChased);
-  check('record: chases and falls match the hand log and the engine', r.chases === hl.reduce((a, h) => a + h.chasers, 0) && r.chases === hl.reduce((a, h) => a + h.choices.split('C').length - 1, 0) && r.falls === st.measures.falls && r.falls === hl.reduce((a, h) => a + h.outcomes.filter((o) => o === 'fell').length, 0) && r.chases_by_seat.length === 4 && r.falls_by_seat.length === 4);
-  check('record: each hand has its outcome, summit, mob, Brumby stack and seat counts', hl.every((h, i) => ['home', 'escaped-watcher', 'nobody-chased'].includes(h.outcome) && h.outcome === handOutcome(st.handLog[i]) && h.summit_reached === (h.summit_trick !== null) && h.mob_value === 3 + 2 * h.brumbies_before && h.chaser_seats.length === h.chasers && h.chaser_seats.length + h.watcher_seats.length === 4 && h.climb_tricks.length === 4 && h.descent_tricks.length === 4 && h.scores.length === 4 && h.tricks === st.handLog[i].tricks.length));
-  check('record: the Brumby stack carries from one hand to the next and stays within 0..4', hl.every((h, i) => h.brumbies_after >= 0 && h.brumbies_after <= 4 && (i === 0 ? h.brumbies_before === 0 : h.brumbies_before === hl[i - 1].brumbies_after)) && hl.every((h) => (h.outcome === 'home' ? h.brumbies_after === 0 && h.home !== null : h.home === null && h.brumbies_after === Math.min(4, h.brumbies_before + 1))));
-  check('record: heels is null only when nobody chased, and that hand ended at the summit', hl.every((h) => (h.outcome === 'nobody-chased') === (h.heels === null && h.end_reason === 'nobody-chases')));
-  check('record: a chaser who was home scored climb + mob; fallers scored -1; watchers their climb tricks', hl.every((h) => h.outcomes.every((o, s) => (o === 'fell' ? h.scores[s] === -1 : o === 'home' ? h.scores[s] === h.climb_tricks[s] + h.mob_value : h.scores[s] === h.climb_tricks[s]))));
+  check('record: ranking and last-hand scores come from the engine result', JSON.stringify(r.last_hand_scores) === JSON.stringify(st.result.lastHandScores) && r.ranking.every((x) => x.last_hand_score === st.result.lastHandScores[x.seat]));
+  check('record: each hand has choices, chasers, tricks, kept cards with values, costs, row and Colt', hl.every((h, i) => {
+    const e = st.handLog[i];
+    return h.choices === e.choices.map((c) => (c === 'chase' ? 'C' : 'W')).join('') && h.chasers === e.chasers && h.chaser_seats.length === h.chasers && h.chaser_seats.length + h.watcher_seats.length === 4
+      && h.tricks_by_seat.every((t, s) => t === h.climb_tricks[s] + h.descent_tricks[s]) && h.kept.length === 4 && h.kept_values.every((v, s) => v === e.keptValues[s]) && h.costs.length === 4
+      && h.row.length === 6 && h.row_value === e.rowValue && h.colt === e.colt && h.colt_kept === e.coltKept && h.tricks === 12 && h.scores.every((x, s) => x === e.scores[s]);
+  }));
+  check('record: a watcher keeps nothing and pays nothing; a chasers hand total is tricks + kept - cost', hl.every((h) => h.choices.split('').every((c, s) => (c === 'W' ? h.kept[s].length === 0 && h.costs[s] === 0 && h.scores[s] === h.tricks_by_seat[s] : h.scores[s] === h.tricks_by_seat[s] + h.kept_values[s] - h.costs[s]))));
+  check('record: the game counts match the engine measures and the hand log', r.chases === hl.reduce((a, h) => a + h.chasers, 0) && r.chases === st.measures.chasesBySeat.reduce((a, b) => a + b, 0) && r.nobody_chased === hl.filter((h) => h.chasers === 0).length && r.nobody_chased === st.measures.nobodyChased && r.kept_value === hl.reduce((a, h) => a + h.kept_values.reduce((x, y) => x + y, 0), 0) && r.colt_rows === hl.filter((h) => h.colt).length && r.colt_kept === hl.filter((h) => h.colt_kept).length && r.chaser_counts.length === 5 && r.chaser_counts.reduce((a, b) => a + b, 0) === r.hands);
   check('record: tiebreak flag matches the engine', r.tiebreak_used === st.result.tiebreakUsed && r.tied_on_total === (st.result.tiedOnTotal.length > 1));
+  check('record: no v4 fields leak into a v5 record', !('mobs_home' in r) && !('escapes' in r) && hl.every((h) => !('end_reason' in h) && !('mob_value' in h) && !('outcome' in h)));
   check('store: uses the slug in its key', STORE_KEY === `${GAME_SLUG}-stats-v1`);
 }
 {
@@ -106,9 +108,9 @@ function finishedGame(seed, seatTypes, rules = {}) {
   const csv = toCsv([r1, r2]);
   const lines = csv.trim().split('\n');
   check('csv: a header and a row per game, LF only, same number of fields as columns', lines.length === 3 && !csv.includes('\r') && csv.endsWith('\n') && lines[0].split(',').length === CSV_COLUMNS.length && gameToRow(r1).length === CSV_COLUMNS.length);
-  check('csv: one rule column per VARIANTS row (none) and one pair per seat; the game columns', VARIANTS.length === 0 && !CSV_COLUMNS.some((c) => c.startsWith('rule_')) && CSV_COLUMNS.includes('seat5_type') && ['tricks', 'mobs_home', 'mobs_home_by_seat', 'escapes', 'nobody_chased', 'chases', 'falls', 'hand_outcomes'].every((c) => CSV_COLUMNS.includes(c)));
+  check('csv: one rule column per VARIANTS row (none) and one pair per seat; the game columns', VARIANTS.length === 0 && !CSV_COLUMNS.some((c) => c.startsWith('rule_')) && CSV_COLUMNS.includes('seat5_type') && ['rules_version', 'tricks', 'nobody_chased', 'chases', 'chases_by_seat', 'kept_value', 'colt_rows', 'colt_kept', 'hand_choices', 'hand_row_values'].every((c) => CSV_COLUMNS.includes(c)) && !CSV_COLUMNS.includes('mobs_home'));
   const row1 = gameToRow(r1); const col = (c) => row1[CSV_COLUMNS.indexOf(c)];
-  check('csv: the game cells carry the record values', col('mobs_home') === r1.mobs_home && col('mobs_home_by_seat') === r1.mobs_home_by_seat.join(' ') && col('escapes') === r1.escapes && col('nobody_chased') === r1.nobody_chased && col('chases') === r1.chases && col('falls') === r1.falls && col('hand_outcomes') === r1.hand_log.map((h) => h.outcome).join(' '));
+  check('csv: the game cells carry the record values', col('rules_version') === 5 && col('nobody_chased') === r1.nobody_chased && col('chases') === r1.chases && col('chases_by_seat') === r1.chases_by_seat.join(' ') && col('kept_value') === r1.kept_value && col('colt_rows') === r1.colt_rows && col('colt_kept') === r1.colt_kept && col('hand_choices') === r1.hand_log.map((h) => h.choices).join(' ') && col('hand_row_values') === r1.hand_log.map((h) => h.row_value).join(' '));
   check('csv: rows carry the rules code and the seat kinds', lines[1].includes(',std,') && lines[2].includes(',std,') && lines[2].includes(',easy,') && lines[2].includes(',hard,'));
   check('csv: cells with commas and quotes are quoted', csvCell('a,b') === '"a,b"' && csvCell('say "hi"') === '"say ""hi"""' && csvCell(null) === '' && csvCell(3) === '3');
   const json = JSON.parse(toJson({ v: 1, games: [r1] }));
@@ -121,21 +123,61 @@ function finishedGame(seed, seatTypes, rules = {}) {
   check('summary: counts games, seat kinds and wins', sum.total === 2 && sum.byKind.human.seats === 1 && sum.byKind.easy.seats === 4 && sum.byKind.hard.seats === 1);
   check('summary: wins by kind never exceed seats', Object.values(sum.byKind).every((t) => t.wins <= t.seats));
   check('summary: human v bot matchups only count games with both', sum.humanVs.easy.games === 1 && sum.humanVs.hard.games === 0);
-  check('summary: split by rules code: everything is standard', sum.byRules.map((r) => r.code).join() === 'std' && summarise([r1, r2], 'std').total === 2);
+  check('summary: split by rules code: everything is the current rules', sum.byRules.map((r) => r.code).join() === 'std' && summarise([r1, r2], 'std').total === 2);
   check('summary: by player count', sum.byPlayers[4].games === 1 && sum.byPlayers[3].games === 1);
   const ex = sum.extra;
   const allHands = [r1, r2].flatMap((x) => x.hand_log);
-  check('summary: extra counts hands, mobs home, escapes, nobody-chased, chasers and falls', ex.hands === allHands.length && ex.mobsHome === r1.mobs_home + r2.mobs_home && ex.escapes === r1.escapes + r2.escapes && ex.mobsHome + ex.escapes === ex.hands && ex.nobodyChased === r1.nobody_chased + r2.nobody_chased && ex.chases === r1.chases + r2.chases && ex.falls === r1.falls + r2.falls);
-  check('summary: the human Chase numbers come from the human seat only', ex.humanHands === r1.hand_log.length && ex.humanChases === r1.hand_log.filter((h) => h.choices[0] === 'C').length && ex.humanHomes === r1.hand_log.filter((h) => h.home === 0).length && ex.humanHomes <= ex.humanChases);
+  check('summary: extra counts hands, chasers, nobody-chased, kept value and the Colt', ex.hands === allHands.length && ex.chases === r1.chases + r2.chases && ex.seatHands === r1.hands * 4 + r2.hands * 3 && ex.nobodyChased === r1.nobody_chased + r2.nobody_chased && ex.keptValue === r1.kept_value + r2.kept_value && ex.coltRows === r1.colt_rows + r2.colt_rows && ex.coltKept === r1.colt_kept + r2.colt_kept && Object.values(ex.coltByKind).reduce((a, b) => a + b, 0) <= ex.coltRows);
+  check('summary: the human Chase numbers come from the human seat only', ex.humanHands === r1.hand_log.length && ex.humanChases === r1.hand_log.filter((h) => h.choices[0] === 'C').length);
   check('summary: seat kind helper', seatKind({ type: 'human' }) === 'human' && seatKind({ type: 'bot', level: 'hard' }) === 'hard');
   const html = statsHtml({ games: [r1, r2] }, 'all');
   const h3 = [...html.matchAll(/<h3>(.*?)<\/h3>/g)].map((m) => m[1]);
-  check('stats screen: the sections', ['Win rate by seat type', 'Win rate by seat position', 'Scores by player count', 'The mob and the summit', 'Ties and the tiebreak', 'By rules'].every((s) => h3.includes(s)), h3.join(' | '));
-  check('stats screen: standard rules, small-sample warnings, the mob line, no raw values', /Standard rules/.test(html) && /small sample/.test(html) && /Mob brought home/.test(html) && /Nobody chased/.test(html) && /Chasers per hand/.test(html) && /Chasers who fell/.test(html) && /Human Chase rate/.test(html) && /Human chase succeeded/.test(html) && !BAD.test(html));
-  check('stats screen: the tiebreak is named as mobs brought home, never the last hand; no variants talk', /most mobs brought home/.test(html) && !/last hand/i.test(html) && !/variant/i.test(html));
+  check('stats screen: the sections', ['Win rate by seat type', 'Win rate by seat position', 'Scores by player count', 'Chase, Watch and the Brumby row', 'Ties and the tiebreak', 'By rules'].every((s) => h3.includes(s)), h3.join(' | '));
+  check('stats screen: current rules, small-sample warnings, the Chase and Colt lines, no raw values', /Current rules \(v5\)/.test(html) && /small sample/.test(html) && /Chase rate/.test(html) && /Nobody chased/.test(html) && /Brumby value won by chasers/.test(html) && /Colt in the row/.test(html) && /Colt kept by a chaser/.test(html) && /Human Chase rate/.test(html) && !BAD.test(html));
+  check('stats screen: the tiebreak is the last hand; no mob, no variants talk', /most points in the last hand/.test(html) && !/mob/i.test(html) && !/variant/i.test(html));
   check('stats screen: no human seat gives dashes, not NaN', !BAD.test(statsHtml({ games: [r2] })) && /Human Chase rate<\/th><td>0 of 0<\/td><td>-/.test(statsHtml({ games: [r2] })));
-  check('stats screen: empty state and an unknown filter fall back', /No games recorded yet/.test(statsHtml({ games: [] })) && /2<\/b> games played/.test(statsHtml({ games: [r1, r2] }, 'nope')));
+  check('stats screen: empty state and an unknown filter fall back to the current rules', /No games recorded yet/.test(statsHtml({ games: [] })) && /2<\/b> games played/.test(statsHtml({ games: [r1, r2] }, 'nope')));
   check('stats screen: export buttons disabled with no data', /disabled/.test(statsButtonsHtml(false)) && !/disabled/.test(statsButtonsHtml(true)));
+}
+
+// ---------- v4 records are relabelled, never mixed with v5 ----------
+{
+  const g = finishedGame(11, ['easy', 'easy', 'easy']);
+  const v5 = createRecorder(createStatsStore(() => fakeStorage())).gameEnd({ state: g.state, seats: g.seats, seed: 11 });
+  const v4 = {
+    v: 1, id: 'gold-4', date: '2026-11-09T10:00:00.000Z', players: 3, seed: '4', rules: {}, rules_code: 'std',
+    seats: [{ seat: 0, type: 'human', level: null }, { seat: 1, type: 'bot', level: 'easy' }, { seat: 2, type: 'bot', level: 'hard' }],
+    hand_scores: [[3, 2, -1], [1, 4, 0], [2, 2, 5]], totals: [6, 8, 4], ranking: [{ seat: 1, total: 8, mobs_home: 1, rank: 1 }],
+    winners: [1], shared: false, tiebreak_used: false, tied_on_total: false, winning_score: 8, margin: 2, hands: 3, tricks: 36,
+    mobs_home: 1, nobody_chased: 1, mobs_home_by_seat: [0, 1, 0], escapes: 2, chases: 2, falls: 1, chases_by_seat: [1, 1, 0], falls_by_seat: [1, 0, 0], seconds: 300,
+    hand_log: [{ end_reason: 'descent', outcome: 'home', choices: 'CWW', chasers: 1, outcomes: ['home', 'x', 'x'], mob_value: 3, scores: [3, 2, -1] },
+      { end_reason: 'descent', outcome: 'escaped-watcher', choices: 'CCW', chasers: 2, outcomes: ['fell', 'fell', 'x'], mob_value: 5, scores: [1, 4, 0] },
+      { end_reason: 'nobody-chases', outcome: 'nobody-chased', choices: 'WWW', chasers: 0, outcomes: ['x', 'x', 'x'], mob_value: 3, scores: [2, 2, 5] }],
+  };
+  const m = migrate(v4);
+  check('migrate: a record with no rules_version is relabelled v4 (rules_version 4, rules_code "v4")', m.rules_version === 4 && m.rules_code === V4_CODE && V4_CODE === 'v4');
+  check('migrate: the old record is not mutated and keeps all its fields', v4.rules_code === 'std' && v4.rules_version === undefined && m.mobs_home === 1 && m.hand_log.length === 3 && m.totals === v4.totals);
+  check('migrate: a v5 record is returned as it is; migrating twice changes nothing', migrate(v5) === v5 && migrate(m) === m && JSON.stringify(migrate(migrate(v4))) === JSON.stringify(m));
+  check('migrate: junk passes through without throwing', migrate(null) === null && migrate(5) === 5);
+  const storage = fakeStorage();
+  storage.map.set(STORE_KEY, JSON.stringify({ v: 1, games: [v4] }));
+  const store = createStatsStore(() => storage);
+  check('store: loading relabels a planted v4 record', store.load().games[0].rules_code === 'v4' && store.load().games[0].rules_version === 4);
+  store.addGame(v5);
+  const both = store.load().games;
+  check('store: v4 and v5 records sit together, each with its own code', both.length === 2 && both[0].rules_code === 'v4' && both[1].rules_code === 'std');
+  const sAll = summarise(both);
+  check('summary: codes list std and v4 apart; v5 measures never count the v4 game', sAll.byRules.map((r) => r.code).join() === 'std,v4' && sAll.extra.hands === v5.hands && sAll.extra4.hands === 3);
+  const s4 = summarise(both, 'v4');
+  check('summary: the v4 filter holds only the v4 game and its mob counts', s4.total === 1 && s4.extra4.mobsHome === 1 && s4.extra4.escapes === 2 && s4.extra4.nobodyChased === 1 && s4.extra4.chases === 3 && s4.extra4.falls === 2 && s4.extra.hands === 0);
+  check('view: the default is the current rules (v5), even though v4 is in the store', effectiveFilter(sAll.codes, 'all') === 'std' && effectiveFilter(sAll.codes, 'v4') === 'v4' && effectiveFilter([{ code: 'v4' }], 'all') === 'v4');
+  const h5 = statsHtml({ games: both }, 'all');
+  const h4 = statsHtml({ games: both }, 'v4');
+  check('view: v5 screen shows the Chase section and offers both rule sets', /Chase, Watch and the Brumby row/.test(h5) && !/The mob and the summit/.test(h5) && /Old rules \(v4/.test(h5) && /<option value="v4"/.test(h5) && /1<\/b> game played/.test(h5));
+  check('view: v4 screen shows the old mob section and its tiebreak, no NaN', /The mob and the summit/.test(h4) && /Mob brought home/.test(h4) && /most mobs brought home/.test(h4) && !/Chase, Watch/.test(h4) && !BAD.test(h4) && /1<\/b> game played under Old rules/.test(h4));
+  const csv = toCsv(both).trim().split('\n');
+  check('csv: both records are exported, with their rules codes and versions', csv.length === 3 && csv[1].includes(',v4,4,') && csv[2].includes(',std,5,'));
+  check('json: the export holds both records with rules_version', JSON.parse(toJson({ v: 1, games: both })).games.map((x) => x.rules_version).join() === '4,5');
 }
 
 // ---------- analytics ----------
@@ -162,9 +204,10 @@ function finishedGame(seed, seatTypes, rules = {}) {
   check('analytics: game_end carries counts, seat kinds and the result summary', ge.game_name === GAME_SLUG && ge.player_count === 4 && ge.human_players === 1 && ge.bot_players === 3 && ge.bot_levels === 'easy,hard,medium' && ge.duration_seconds === 125 && ge.hands === 4 && typeof ge.winner_seat_type === 'string' && /^(yes|no)$/.test(ge.tiebreak_used));
   const he = calls[1][2];
   const m = g.state.measures;
-  check('analytics: hand_end says the outcome only through mobs_home / escapes / nobody_chased (0 or 1)', he.hand_number === 1 && he.mobs_home === (hrec.broughtHomeBy === null ? 0 : 1) && he.escapes === 1 - he.mobs_home && he.nobody_chased === (hrec.chasers === 0 ? 1 : 0) && Object.keys(he).every((k) => analytics.ALLOWED_PARAMS.includes(k)));
-  check('analytics: game_end carries the per-game counts and they match the engine', ge.mobs_home === m.mobsHome && ge.escapes === m.escapes && ge.nobody_chased === m.nobodyChased && ge.mobs_home + ge.escapes === 4 && ge.tricks === m.tricks);
-  check('analytics: the whitelist holds the three new params (mobs_home, escapes, nobody_chased); no variant event; game name', ['mobs_home', 'escapes', 'nobody_chased'].every((k) => analytics.ALLOWED_PARAMS.includes(k)) && analytics.ALLOWED_PARAMS.length === 18 && !analytics.EVENT_NAMES.includes('variant_changed') && analytics.EVENT_NAMES.length === 7 && analytics.trackVariantChanged === undefined && analytics.GAME_NAME === 'snowy-river');
+  check('analytics: hand_end says the outcome through nobody_chased (0 or 1), chasers and row_value', he.hand_number === 1 && he.nobody_chased === (hrec.chasers === 0 ? 1 : 0) && he.chasers === hrec.chasers && he.row_value === hrec.rowValue && !('mobs_home' in he) && !('escapes' in he) && Object.keys(he).every((k) => analytics.ALLOWED_PARAMS.includes(k)));
+  check('analytics: game_end carries the per-game counts and they match the engine', ge.nobody_chased === m.nobodyChased && ge.chasers === m.chasesBySeat.reduce((a, b) => a + b, 0) && ge.kept_value === m.keptValue && ge.tricks === m.tricks && !('mobs_home' in ge) && !('escapes' in ge));
+  check('analytics: the whitelist is the v4 list minus mobs_home and escapes plus chasers, row_value, kept_value; no variant event; game name', same(analytics.ALLOWED_PARAMS.slice().sort(), ['game_name', 'player_count', 'human_players', 'bot_players', 'bot_levels', 'rules_code', 'hand_number', 'hands', 'tricks', 'duration_seconds', 'winner_seat_type', 'winning_score', 'winning_margin', 'tiebreak_used', 'human_rank', 'nobody_chased', 'chasers', 'row_value', 'kept_value'].sort()) && analytics.ALLOWED_PARAMS.length === 19 && !analytics.EVENT_NAMES.includes('variant_changed') && analytics.EVENT_NAMES.length === 7 && analytics.trackVariantChanged === undefined && analytics.GAME_NAME === 'snowy-river');
+  check('analytics: clean() drops the retired mobs_home and escapes and any extra key', same(Object.keys(analytics.clean({ mobs_home: 1, escapes: 1, seed: 's', name: 'x', chasers: 2, row_value: 7, kept_value: 5 })).sort(), ['chasers', 'kept_value', 'row_value']));
   check('analytics: every parameter is on the whitelist and is a number or a short token', calls.every((c) => Object.entries(c[2]).every(([k, v]) => analytics.ALLOWED_PARAMS.includes(k) && (typeof v === 'number' || /^[A-Za-z0-9_,.+-]{1,60}$/.test(v)))));
   check('analytics: no name, seed or sentence is ever sent', !JSON.stringify(calls).includes('Secret') && !JSON.stringify(calls).includes('"seed"'));
   check('analytics: clean() drops unknown keys, long strings, spaces, objects and non-finite numbers', JSON.stringify(analytics.clean({ player_name: 'x', rules_code: 'a b', game_name: 'x'.repeat(61), hands: NaN, tricks: {}, winning_score: 7, bot_levels: 'easy,hard' })) === '{"bot_levels":"easy,hard","winning_score":7}');
@@ -202,7 +245,7 @@ function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
   check('bug report: has the state, controller, diagnostics, logs and the player\'s words', rep.schemaVersion === 1 && rep.game.kind === 'game' && rep.game.n === 3 && rep.controller.seed === 77 && Array.isArray(rep.diagnostics.cards) && rep.player.title === 'T' && rep.actionLog.length === 1);
   check('bug report: is JSON-safe and long strings are clipped', JSON.stringify(roundTrip(rep)) === JSON.stringify(rep) && rep.eventLog[0].message.length === 2000);
   const sn = rep.diagnostics.snowy;
-  check('bug report: diagnostics hold the phase, marker, summit step, Brumby stack and choices', typeof sn.phase === 'string' && typeof sn.marker === 'number' && sn.summitStep === ctl.state.params.summitStep && typeof sn.brumbies === 'number' && Array.isArray(sn.chosen) && sn.chosen.length === 3 && (sn.choicesRevealed === null || sn.choicesRevealed.length === 3) && Array.isArray(sn.climbTricks));
+  check('bug report: diagnostics hold the phase, marker, row, kept cards, deck counts and choices', typeof sn.phase === 'string' && typeof sn.marker === 'number' && Array.isArray(sn.row) && Array.isArray(sn.kept) && typeof sn.brumbyDeckCount === 'number' && typeof sn.brumbyDiscardCount === 'number' && Array.isArray(sn.chosen) && sn.chosen.length === 3 && (sn.choicesRevealed === null || sn.choicesRevealed.length === 3) && Array.isArray(sn.climbTricks) && !('summitStep' in sn) && !('mob' in sn));
   const hum = () => createController({ seats: [{ type: 'human' }, { type: 'human' }, { type: 'human' }], seed: 5 });
   const live = hum();
   const lv = bug.buildReport({ ctl: live, screen: 'game' }).diagnostics;
@@ -212,7 +255,7 @@ function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
   if (sc.state.phase === 'summit') {
     const first = sc.play({ type: 'summit', choice: 'chase' });
     const sd = bug.buildReport({ ctl: sc, screen: 'game' }).diagnostics;
-    check('bug report: at the summit the cards say why they are blocked; choices show who has chosen, not what, until revealed', first.ok && sd.snowy.phase === 'summit' && sd.snowy.summitTrick === sc.state.summitTrick && sd.snowy.marker >= sd.snowy.summitStep && sd.cards.length > 0 && sd.cards.every((c) => /summit|Chase/.test(c.blockReason)) && sd.snowy.revealed === false && sd.snowy.choicesRevealed === null && sd.snowy.chosen.filter(Boolean).length === 1);
+    check('bug report: at the summit the cards say why they are blocked; choices show who has chosen, not what, until revealed', first.ok && sd.snowy.phase === 'summit' && sd.snowy.marker === 6 && sd.snowy.handsTurned === true && sd.snowy.row.length === 6 && sd.cards.length > 0 && sd.cards.every((c) => /summit|Chase/.test(c.blockReason)) && sd.snowy.revealed === false && sd.snowy.choicesRevealed === null && sd.snowy.chosen.filter(Boolean).length === 1);
     sc.play({ type: 'summit', choice: 'watch' }); sc.play({ type: 'summit', choice: 'watch' });
     const sr = bug.buildReport({ ctl: sc, screen: 'game' }).diagnostics;
     check('bug report: after the reveal the choices are in the report', sr.snowy.phase !== 'summit' ? sr.snowy.choicesRevealed === null || Array.isArray(sr.snowy.choicesRevealed) : Array.isArray(sr.snowy.choicesRevealed));
