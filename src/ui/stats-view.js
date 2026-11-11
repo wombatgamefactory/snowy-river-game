@@ -114,7 +114,7 @@ ${s.filter === 'v4' ? v4Section(s) : v5Section(s)}
 }
 
 export function statsButtonsHtml(hasData) {
-  const dis = hasData ? '' : ' disabled';
+  const dis = hasData ? '' : ' disabled title="No games recorded yet"';
   return `<button type="button" class="btn btn--small" data-action="export-csv"${dis}>Export CSV</button>`
     + `<button type="button" class="btn btn--small" data-action="export-json"${dis}>Export JSON</button>`
     + `<button type="button" class="btn btn--small" data-action="clear-stats"${dis}>Clear</button>`;

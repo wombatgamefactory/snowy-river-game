@@ -171,7 +171,7 @@ legend { font-weight: 700; padding: 0; margin-bottom: 4px; }
 .seat__head { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 2px 8px; min-width: 0; }
 .seat__hand { font-size: 0.78rem; font-weight: 600; color: var(--ink-soft); line-height: 1.2; }
 .seat__cardsnum { font-weight: 700; font-variant-numeric: tabular-nums; }
-/* A narrow seat (5 players, phones) drops its avatar so the name is never cut: the name matters more. */
+/* A narrow seat (phones) drops its avatar so the name is never cut: the name matters more. */
 @container (max-width: 215px) {
   .seat__head { grid-template-columns: minmax(0, 1fr); }
   .seat__head .seat__avatar { display: none; }

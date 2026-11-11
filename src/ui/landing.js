@@ -33,7 +33,7 @@ const ICON_AGE = '<svg viewBox="0 0 40 40" aria-hidden="true"><rect x="7" y="5" 
 
 // ---------- How to play ----------
 
-/** The rules in plain steps, as a new player needs them (concept v5's teach, in order). */
+/** The rules in plain steps, as a new player needs them, in teaching order. */
 export function howToPlayHtml() {
   const suits = SUITS.map((k) => `<li>${badgeImg(k, 'how__badge')}<span>${esc(SUIT_NAMES[k])} <small>${esc(SUIT_ICONS[k])}</small></span></li>`).join('');
   return `<div class="how">

@@ -351,7 +351,7 @@ function render() {
   if (!ctl) return;
   document.body.dataset.screen = 'game';
   const st = ctl.state;
-  const hadOverlay = !!app.querySelector('.overlay, .cover');
+  const hadOverlay = overlayKey();
   const hadHandFocus = !!(document.activeElement && document.activeElement.closest && document.activeElement.closest('.hand, .decision'));
 
   if (!ui.frame && !ui.modal && ctl.needsHandoff() && st.phase !== 'over') {
@@ -378,8 +378,16 @@ function render() {
   if (!ui.frame) pumpBots();
 }
 
+/** Which overlay is up ('' for none): the turn beat, the summit modal, the reveal, a reckoning, the end, the cover. */
+function overlayKey() {
+  const o = app.querySelector('.overlay, .cover');
+  return o ? (o.dataset.overlay || 'cover') : '';
+}
+
 function focusOverlay(hadOverlay) {
-  if (hadOverlay) return;
+  // Keep the focus where it is while the same overlay is redrawn; a different overlay (the turn beat giving way to
+  // the summit modal, say) takes the focus, or a keyboard user would be left on the page behind it.
+  if (hadOverlay && hadOverlay === overlayKey()) return;
   // The summit modal has two equal choices: focus its heading, never a side.
   const btn = app.querySelector('.overlay [data-autofocus], .overlay .btn--primary, .cover .btn--primary');
   if (btn) btn.focus({ preventScroll: false });

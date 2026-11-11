@@ -1,26 +1,28 @@
-// qa-run.mjs - browser QA over the whole game, run from a sub-path the way GitHub Pages serves it.
+// qa-run.mjs - browser QA over the whole game (v5 rules), run from a sub-path the way GitHub Pages serves it.
 //
 // 1. Copies the files that would be published (git ls-files plus untracked files that are not ignored) into
 //    <system temp>/<slug>-qa/site/<slug>-game/ and serves <temp>/site on a CASE-SENSITIVE static server (a request
 //    must match a real file name exactly, like Pages).
-// 2. Drives the game in headless Chromium: the landing page from the sub-path, the consent banner and analytics on
-//    a real-looking host name, 1440 / 1024 / 390 px, 2 to 5 players against every bot level (Hard at five players
-//    must not freeze the page), all-bot games, pass-and-play with the summit choices secret behind the cover, every
-//    way a hand can end (a lone chaser brings the mob home, one of several chasers does, every chaser falls with a
-//    watcher at the heels, nobody chases), the Brumby cap (four cards, the mob worth 11), both sides of the Mountain
-//    card, the tiebreak and a shared win, the summit reveal, the overlays dimming the whole viewport, every card
-//    face, the stats screen and its exports, the bug reporter, the rule book link, reduced motion, keyboard play,
-//    leaving a game and a clean console.
+// 2. Drives the game in headless Chromium: the landing page from the sub-path (2 to 4 players, no rule book link),
+//    the consent banner and analytics on a real-looking host name, 1440 / 1024 / 390 px, 2 to 4 players against every
+//    bot level (Hard must not freeze the page), all-bot games, pass-and-play with the summit choice secret behind the
+//    cover and the cards turned together, the turn of the hands and of the Mountain card at the summit, the Brumby row
+//    and each chaser's kept cards, the Chase cost by player count, every kind of hand (nobody chases, a lone chaser,
+//    several, everyone, the Colt kept or sent off, a chaser below zero, the Brumby deck reshuffled), the tiebreak and a
+//    shared win, the overlays dimming the whole viewport, every card face, the stats screen and its exports with a
+//    migrated v4 record, analytics, the bug reporter, reduced motion, keyboard play, leaving a game and a clean console.
 // 3. Prints PASS/FAIL per check, writes screenshots to <temp>/<slug>-qa/shots/ and a JSON summary to
 //    <temp>/<slug>-qa/qa-results.json. Exit 1 if anything fails.
 //
-// The hand endings, the Brumby cap and the tiebreak games are found by playing the same games headlessly first
-// (the real controller and the Easy bot, a human seat that plays its first legal card and follows a fixed Chase /
-// Watch policy), so each is reached from a `?seed=` and the page's reckoning is checked against the engine's own
-// numbers. A search that finds nothing fails the run instead of skipping the scenario.
+// The hands, the Colt and the tiebreak games are found by playing the same games headlessly first (the real controller
+// and the Easy bot, a human seat that plays its first legal card and follows a fixed Chase / Watch policy), so each is
+// reached from a `?seed=` and the page's reckoning is checked against the engine's own numbers. A search that finds
+// nothing fails the run instead of skipping the scenario. Searches run only for the scenarios that are selected.
 //
 // Needs Playwright (not a dependency of this repo; see tests/browser-lib.mjs).
 // Run: node tests/qa/qa-run.mjs [--only=<scenario substring>] [--widths=390,1440]
+//   --only keeps the screenshots of earlier runs (a full run clears them) and writes qa-results-<only>.json.
+//   A full run takes several minutes; in a shell that throttles background jobs, run it in parts with --only.
 
 import http from 'node:http';
 import fs from 'node:fs';
@@ -28,8 +30,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { GAME_NAME, GAME_SLUG, GAME_TAGLINE, RULEBOOK_URL, CONTACT_EMAIL } from '../../src/game-config.js';
+import { GAME_NAME, GAME_SLUG, GAME_TAGLINE, CONTACT_EMAIL, PLAYER_COUNTS } from '../../src/game-config.js';
 import { createController } from '../../src/ui/controller.js';
+import { brumbyValue } from '../../src/engine/index.js';
+import { ALLOWED_PARAMS, EVENT_NAMES } from '../../src/ui/analytics.js';
 import { loadPlaywright, MIME } from '../browser-lib.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -42,8 +46,10 @@ const ONLY = (process.argv.find((a) => a.startsWith('--only=')) || '').slice(7);
 const WIDTHS_ARG = (process.argv.find((a) => a.startsWith('--widths=')) || '').slice(9).split(',').filter(Boolean).map(Number);
 const WIDTHS = WIDTHS_ARG.length ? WIDTHS_ARG : [1440, 1024, 390];
 const phoneOpts = (w) => (w < 700 ? { hasTouch: true, isMobile: true } : {});
-const HANDS = { 2: 3, 3: 3, 4: 4, 5: 5 }; // one hand per player, three at two players
-const SUMMIT = { 2: 7, 3: 7, 4: 7, 5: 6 };
+const COUNTS = [2, 3, 4];
+const HANDS = { 2: 3, 3: 3, 4: 4 }; // one hand per player, three at two players
+const COST = { 2: 3, 3: 2, 4: 2 }; // the Chase cost by player count
+const signed = (x) => (x > 0 ? `+${x}` : `${x}`);
 
 const chromium = await loadPlaywright();
 if (!chromium) { console.log('qa-run: Playwright not found'); process.exit(1); }
@@ -70,7 +76,8 @@ function publishedFiles() {
     return out;
   }
 }
-fs.rmSync(TMP, { recursive: true, force: true });
+fs.rmSync(SITE, { recursive: true, force: true });
+if (!ONLY) fs.rmSync(SHOTS, { recursive: true, force: true }); // a part run keeps the pictures of the other parts
 fs.mkdirSync(SHOTS, { recursive: true });
 const served = new Set(); // exact-case relative paths under SITE
 for (const rel of publishedFiles()) {
@@ -111,8 +118,8 @@ async function shot(page, name, opts = {}) {
   const file = path.join(SHOTS, `${slug(current || 'qa')}--${slug(name)}.png`);
   try { await page.screenshot({ path: file, ...opts }); } catch (e) { console.log(`  (screenshot failed: ${e.message})`); }
 }
-async function scenario(name, fn) {
-  if (ONLY && !name.toLowerCase().includes(ONLY.toLowerCase())) return;
+async function scenario(name, fn, { always = false } = {}) {
+  if (ONLY && !always && !name.toLowerCase().includes(ONLY.toLowerCase())) return; // `always`: the console check runs in every part
   current = name;
   console.log(`\n== ${name}`);
   const t0 = Date.now();
@@ -121,8 +128,9 @@ async function scenario(name, fn) {
 }
 
 // ---------- browser plumbing ----------
-const browser = await chromium.launch();
+const browser = await chromium.launch({ args: ['--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows'] });
 const problems = []; // console errors/warnings, page errors, failed requests, HTTP >= 400 (web fonts aside)
+const debugLogs = []; // console.log / info / debug output: there must be none (no debug logs in the render path)
 const FONT_HOST = /^https:\/\/fonts\.(googleapis|gstatic)\.com\//; // optional, with fallbacks; may be unreachable offline
 const imageBytes = new Map();
 const allBytes = new Map();
@@ -131,7 +139,10 @@ async function newPage(w = 1440, h = 900, opts = {}, init = null, b = browser) {
   if (init) await ctx.addInitScript(init);
   const page = await ctx.newPage();
   page.setDefaultTimeout(20000);
-  page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !/fonts\.(googleapis|gstatic)\.com/.test(m.text() + (m.location().url || ''))) problems.push(`[${current}] ${m.type()}: ${m.text()}`); });
+  page.on('console', (m) => {
+    if ((m.type() === 'error' || m.type() === 'warning') && !/fonts\.(googleapis|gstatic)\.com/.test(m.text() + (m.location().url || ''))) problems.push(`[${current}] ${m.type()}: ${m.text()}`);
+    if (['log', 'info', 'debug', 'trace'].includes(m.type())) debugLogs.push(`[${current}] ${m.type()}: ${m.text()}`);
+  });
   page.on('pageerror', (e) => problems.push(`[${current}] pageerror: ${e.message}`));
   page.on('requestfailed', (r) => { if (!FONT_HOST.test(r.url())) problems.push(`[${current}] request failed: ${r.url()}`); });
   page.on('response', async (r) => {
@@ -178,18 +189,19 @@ const summitChoice = (policy, k) => (policy === 'alt' ? (k % 2 ? 'watch' : 'chas
 /**
  * One human decision: a cover, a reckoning, the summit choice or a card. Returns what it did.
  * `opts.stopAtReckoning` is an async predicate asked before a reckoning is dismissed; true returns 'stop'.
+ * `opts.onSummary` is called after a reckoning is dismissed.
  */
 async function humanStep(page, stats, opts = {}) {
   if (await page.locator('.end--game').count()) return 'end';
   if (await page.locator('.cover').count()) {
     stats.covers++;
-    if (await page.locator('.hand, .card, .cardimg, .table, .log__list, .mountain, .colt, .decision, .overlay, .seat, .schip').count()) stats.leaks++;
+    if (await page.locator('.hand, .card, .cardimg, .table, .log__list, .mountain, .row, .decision, .overlay, .seat, .schip').count()) stats.leaks++;
     await tryClick(page.locator('.cover .btn--primary'));
     return 'cover';
   }
   if (await page.locator('#continue').count()) {
     if (opts.stopAtReckoning && (await opts.stopAtReckoning())) return 'stop';
-    if (await tryClick(page.locator('#continue'))) stats.summaries++;
+    if (await tryClick(page.locator('#continue'))) { stats.summaries++; if (opts.onSummary) await opts.onSummary(); }
     return 'summary';
   }
   const decide = page.locator('.decision [data-action=decide]');
@@ -223,24 +235,35 @@ async function playHuman(page, limitMs = 150000, until = null, opts = {}) {
 }
 const finish = (page) => page.waitForSelector('.end--game', { timeout: 120000 });
 
-/** Watches the table for everything that flashes past: marker steps, Brumby cards, the mob, reveals, reckonings. */
+/**
+ * Watches the table for everything that flashes past: the marker, the Mountain's side, the turn of the hands, the Brumby row,
+ * kept cards, reveals, phases. `window.__w.reset()` clears the per-hand counters (called after each reckoning).
+ */
 async function watch(page) {
   await page.evaluate(() => {
-    const W = { steps: [], sides: [], brumbies: [], brumbyMax: 0, mobs: [], mobMax: 0, reveals: [], hands: [], phases: [], summitModals: 0 };
+    const fresh = () => ({ steps: [], sides: [], mtnSrc: [], trumpLines: [], turnBeats: 0, turnedFrames: 0, upright: 0, reveals: [], phases: [], summitModals: 0, rowTakenMax: 0, nextLit: 0, keptMax: 0, coltSeenKept: false, discardMax: 0, coltInRow: false, takenOff: 0, takenKept: 0, markerOnDescent: 0 });
+    const W = fresh();
+    W.reset = () => { const f = fresh(); for (const k of Object.keys(f)) W[k] = f[k]; };
     window.__w = W;
     const app = document.getElementById('app');
     const look = () => {
-      const mk = app.querySelector('.mountain__marker');
-      if (mk) {
-        const st = Number(mk.dataset.step);
-        if (W.steps[W.steps.length - 1] !== st) W.steps.push(st);
-        if (!W.sides.includes(mk.dataset.side)) W.sides.push(mk.dataset.side);
+      const mt = app.querySelector('.mountain');
+      if (mt) {
+        const side = mt.dataset.side;
+        if (!W.sides.length || W.sides[W.sides.length - 1] !== side) W.sides.push(side);
+        const im = mt.querySelector('.mountain__img');
+        if (im) { const src = im.getAttribute('src'); if (W.mtnSrc[W.mtnSrc.length - 1] !== src) W.mtnSrc.push(src); }
+        const tl = mt.querySelector('.mountain__trump');
+        if (tl) { const t = tl.textContent.trim(); if (W.trumpLines[W.trumpLines.length - 1] !== t) W.trumpLines.push(t); }
+        if (side === 'descent' && mt.querySelector('.mountain__marker')) W.markerOnDescent++;
       }
-      const k = app.querySelectorAll('.colt .brumby').length;
-      if (W.brumbies[W.brumbies.length - 1] !== k) W.brumbies.push(k);
-      W.brumbyMax = Math.max(W.brumbyMax, k);
-      const mob = app.querySelector('[data-mob]');
-      if (mob) { const m = Number(mob.textContent); if (W.mobs[W.mobs.length - 1] !== m) W.mobs.push(m); W.mobMax = Math.max(W.mobMax, m); }
+      const mk = app.querySelector('.mountain__marker');
+      if (mk) { const st = Number(mk.dataset.step); if (W.steps[W.steps.length - 1] !== st) W.steps.push(st); }
+      if (app.querySelector('.overlay--turn')) W.turnBeats++;
+      const hand = app.querySelector('.hand');
+      const imgs = hand ? [...hand.querySelectorAll('img')] : [];
+      if (hand && hand.classList.contains('hand--turned')) { W.turnedFrames++; if (imgs.some((i) => !i.classList.contains('is-turned'))) W.upright++; }
+      else if (imgs.some((i) => i.classList.contains('is-turned'))) W.upright++;
       const ph = app.querySelector('.phasebar');
       if (ph) { const key = ph.className.replace('phasebar phasebar--', ''); if (!W.phases.includes(key)) W.phases.push(key); }
       if (app.querySelector('.overlay--summit')) W.summitModals++;
@@ -252,42 +275,57 @@ async function watch(page) {
         const last = W.reveals[W.reveals.length - 1];
         if (!last || last.names.join('|') !== names.join('|') || last.faces.join('|') !== faces.join('|') || last.text !== text) W.reveals.push({ names, faces, text });
       }
-      const hd = app.querySelector('.end--hand');
-      if (hd) {
-        const title = hd.querySelector('#hand-title').textContent;
-        if (!W.hands.length || W.hands[W.hands.length - 1].title !== title) {
-          W.hands.push({
-            title,
-            kind: ['home', 'escaped', 'nobody'].find((x) => hd.classList.contains(`end--${x}`)),
-            lead: hd.querySelector('.end__note--lead').textContent,
-          });
-        }
-      }
+      W.rowTakenMax = Math.max(W.rowTakenMax, app.querySelectorAll('.rslot.is-taken').length);
+      W.takenKept = Math.max(W.takenKept, app.querySelectorAll('.rslot.is-taken .rslot__gone--kept').length);
+      W.takenOff = Math.max(W.takenOff, app.querySelectorAll('.rslot.is-taken .rslot__gone--off').length);
+      W.nextLit = Math.max(W.nextLit, app.querySelectorAll('.rslot.is-next').length);
+      W.keptMax = Math.max(W.keptMax, app.querySelectorAll('.seat .kept__card').length);
+      if (app.querySelector('.seat .kept__card[title*="Colt"]')) W.coltSeenKept = true;
+      if (app.querySelector('.rslot.is-colt, .summit__row .is-colt')) W.coltInRow = true;
+      const disc = [...app.querySelectorAll('.row__discard summary, .row__pile')].find((e) => /Discard/.test(e.textContent));
+      if (disc && disc.querySelector('b')) W.discardMax = Math.max(W.discardMax, Number(disc.querySelector('b').textContent));
     };
     new MutationObserver(look).observe(app, { childList: true, subtree: true });
     look();
   });
 }
-const seen = (page) => page.evaluate(() => window.__w);
+const seen = (page) => page.evaluate(() => { const { reset, ...rest } = window.__w; return rest; });
+const resetWatch = (page) => page.evaluate(() => window.__w && window.__w.reset());
 
 /** The reckoning on screen, read back from the DOM. */
 const readReckoning = (page) => page.evaluate(() => {
   const el = document.querySelector('.end--hand');
+  const notes = [...el.querySelectorAll('.end__note')];
   return {
     cls: el.className,
     title: el.querySelector('#hand-title').textContent,
     lead: el.querySelector('.end__note--lead').textContent,
+    foot: notes.filter((n) => !n.classList.contains('end__note--lead')).map((n) => n.textContent).join(' '),
+    button: el.querySelector('#continue').textContent,
     rows: [...el.querySelectorAll('.reck__row')].map((r) => ({
       cls: r.className,
+      seat: Number(r.dataset.seat),
+      who: r.querySelector('.reck__who b').textContent,
+      ud: r.querySelector('.reck__who small').textContent,
       choice: r.querySelector('.reck__choice b').textContent,
-      what: r.querySelector('.reck__what b').textContent,
-      sum: r.querySelector('.reck__what small').textContent,
+      sum: r.querySelector('.reck__what b').textContent,
+      kept: r.querySelectorAll('.reck__keptcard').length,
       score: Number(r.querySelector('.reck__score').textContent),
       total: Number(r.querySelector('.reck__total b').textContent),
-      heels: !!r.querySelector('.mark--heels'),
     })),
   };
 });
+
+/** What the reckoning row for a seat must say, worked out from the engine's own hand record. */
+function expectedRow(bd) {
+  const trickWord = `${bd.tricks} ${bd.tricks === 1 ? 'trick' : 'tricks'}`;
+  return {
+    ud: `${bd.climbTricks} up, ${bd.descentTricks} down`,
+    choice: bd.choice === 'chase' ? `Chase -${bd.cost}` : 'Watch',
+    sum: bd.choice === 'chase' ? `${trickWord} ${bd.keptValue < 0 ? '-' : '+'} ${Math.abs(bd.keptValue)} kept - ${bd.cost} Chase = ${signed(bd.score)}` : `${trickWord} = ${signed(bd.score)}`,
+    kept: bd.choice === 'chase' ? bd.kept.length : 0,
+  };
+}
 
 /** A modal must dim the whole viewport, wherever the page is scrolled to (the overlay is position: fixed). */
 async function dimCheck(page, label) {
@@ -318,13 +356,22 @@ async function dimCheck(page, label) {
 }
 
 // ---------- finding the games to drive: the same controller, played headlessly ----------
-/** A game as the page plays it: seat 0 is the human (first legal card, the Chase / Watch policy), the rest Easy bots unless `bots` says. */
+const simCache = new Map();
+/** A game as the page plays it: seat 0 is the human (first legal card, the Chase / Watch policy), the rest Easy bots unless `allBots`. */
 function simulate({ seed, players, policy = 'alt', allBots = false }) {
+  const key = `${seed}|${players}|${policy}|${allBots}`;
+  if (simCache.has(key)) return simCache.get(key);
   const seats = Array.from({ length: players }, (_, i) => ({ type: allBots || i > 0 ? 'easy' : 'human' }));
   const ctl = createController({ seats, seed, rules: {}, autoPlayForced: false });
   const hands = [];
   const summitOrders = []; // the order the engine collects each summit's choices in (from the last climb winner)
-  const take = (evs) => { for (const e of evs || []) { if (e.type === 'hand-ended') hands.push(e); else if (e.type === 'summit-reached') summitOrders.push(e.order); } };
+  const take = (evs) => {
+    for (const e of evs || []) {
+      if (e.type === 'hand-ended') hands.push({ ...e, reshuffleNext: false });
+      else if (e.type === 'summit-opened') summitOrders.push(e.order);
+      else if (e.type === 'brumby-reshuffled' && hands.length) hands[hands.length - 1].reshuffleNext = true;
+    }
+  };
   take(ctl.startEvents);
   let summits = 0;
   for (let guard = 0; !ctl.isFinished() && guard < 20000; guard++) {
@@ -335,19 +382,25 @@ function simulate({ seed, players, policy = 'alt', allBots = false }) {
     if (!r.ok) break;
     take(r.events);
   }
-  return { hands, summitOrders, result: ctl.state.result, names: ctl.names };
+  const out = { hands, summitOrders, result: ctl.state.result, names: ctl.names };
+  simCache.set(key, out);
+  return out;
 }
 
-const chasersOf = (ev) => ev.choices.filter((c) => c === 'chase').length;
+const nChasers = (ev) => ev.chasers;
 const KINDS = {
-  'a lone chaser brings the mob home': (ev) => ev.broughtHomeBy !== null && chasersOf(ev) === 1,
-  'one of several chasers brings the mob home': (ev) => ev.broughtHomeBy !== null && chasersOf(ev) >= 2,
-  'every chaser falls, a watcher is at the heels': (ev) => ev.endReason === 'descent' && ev.broughtHomeBy === null && chasersOf(ev) >= 2 && ev.heelsSeat !== null && ev.choices[ev.heelsSeat] === 'watch',
-  'nobody chases': (ev) => ev.endReason === 'nobody-chases',
+  'nobody chases': { want: (ev) => ev.chasers === 0, players: [3, 2, 4] },
+  'a lone chaser': { want: (ev) => ev.chasers === 1, players: [4, 3, 2] },
+  'several chase, some watch': { want: (ev) => ev.chasers >= 2 && ev.chasers < ev.choices.length, players: [4, 3, 2] },
+  'everyone chases': { want: (ev) => ev.chasers === ev.choices.length, players: [2, 3, 4] },
+  'the Colt in the row, kept by a chaser': { want: (ev) => ev.colt && ev.coltKept, players: [3, 2, 4] },
+  'the Colt in the row, sent off by a watcher': { want: (ev) => ev.colt && !ev.coltKept, players: [4, 3, 2] },
+  'a chaser ends the hand below zero': { want: (ev) => ev.breakdown.some((b) => b.choice === 'chase' && b.score < 0), players: [2, 3, 4] },
+  'the Brumby deck is shuffled again before the next hand': { want: (ev) => ev.reshuffleNext, players: [2, 3, 4] },
 };
 
-/** The earliest game (fewest players, then earliest hand, then lowest seed) with a hand that satisfies `want`. */
-function findHand(want, { playersList = [2, 3, 4, 5], policies = ['chase', 'watch', 'alt'], seeds = 400 } = {}) {
+/** The earliest game (in the order of `playersList`, then earliest hand, then lowest seed) with a hand that satisfies `want`. */
+function findHand(want, { playersList = [2, 3, 4], policies = ['chase', 'watch', 'alt'], seeds = 400 } = {}) {
   for (const players of playersList) {
     let best = null;
     for (const policy of policies) {
@@ -365,8 +418,8 @@ function findHand(want, { playersList = [2, 3, 4, 5], policies = ['chase', 'watc
 }
 
 /** A game that ends with the tiebreak deciding, or with a shared win (all-bot games, so the seed alone fixes them). */
-function findResult(want, seeds = 4000) {
-  for (const players of [2, 3, 4, 5]) {
+function findResult(want, seeds = 6000) {
+  for (const players of COUNTS) {
     for (let seed = 1; seed <= seeds; seed++) {
       const { result, names } = simulate({ seed, players, allBots: true });
       if (result && want(result)) return { seed, players, result, names };
@@ -383,20 +436,24 @@ function findAwayFromYou(players) {
   }
   return null;
 }
-const searchStart = Date.now();
+
 const TARGETS = {};
-for (const [kind, want] of Object.entries(KINDS)) TARGETS[kind] = findHand(want);
-// Five players, four escapes in a row so the stack is full (the mob is worth 11); prefer a fifth escape at the cap.
-TARGETS.cap = findHand((ev) => ev.brumbiesBefore === 4 && ev.mobValue === 11 && ev.brumbyAtCap && ev.broughtHomeBy === null, { playersList: [5], seeds: 3000 })
-  || findHand((ev) => ev.brumbiesBefore === 4 && ev.mobValue === 11, { playersList: [5], seeds: 3000 });
-for (const n of [2, 3, 4, 5]) TARGETS[`reveal${n}`] = findAwayFromYou(n);
-TARGETS.tiebreak = findResult((r) => r.tiebreakUsed && !r.shared);
-TARGETS.shared = findResult((r) => r.shared);
-console.log(`scenario search (${((Date.now() - searchStart) / 1000).toFixed(1)} s):`);
-for (const [k, t] of Object.entries(TARGETS)) console.log(`  ${k}: ${t ? `seed ${t.seed}${t.players ? `, ${t.players} players` : ''}${t.policy ? `, policy ${t.policy}, hand ${t.handIdx + 1}` : ''}${t.order ? `, collected from seat ${t.order[0] + 1}` : ''}` : 'NOT FOUND'}`);
+function target(key, fn) {
+  if (!(key in TARGETS)) {
+    const t0 = Date.now();
+    TARGETS[key] = fn();
+    const t = TARGETS[key];
+    console.log(`  search "${key}" (${((Date.now() - t0) / 1000).toFixed(1)} s): ${t ? `seed ${t.seed}${t.players ? `, ${t.players} players` : ''}${t.policy ? `, policy ${t.policy}, hand ${t.handIdx + 1}` : ''}${t.order ? `, collected from seat ${t.order[0] + 1}` : ''}` : 'NOT FOUND'}`);
+  }
+  return TARGETS[key];
+}
+const handTarget = (kind) => target(kind, () => findHand(KINDS[kind].want, { playersList: KINDS[kind].players }));
+const revealTarget = (n) => target(`reveal${n}`, () => findAwayFromYou(n));
+const tieTarget = () => target('tiebreak', () => findResult((r) => r.tiebreakUsed && !r.shared));
+const sharedTarget = () => target('shared', () => findResult((r) => r.shared));
 
 // ============================================================================================
-await scenario('Static: every referenced path is an exact-case match; lower-case names; sizes', async () => {
+await scenario('Static: every referenced path is an exact-case match; lower-case names; sizes; no 5-player art', async () => {
   const refs = [];
   const textFiles = [...served].filter((f) => /\.(html|css|js)$/.test(f) && !f.includes('/tests/'));
   for (const f of textFiles) {
@@ -414,11 +471,15 @@ await scenario('Static: every referenced path is an exact-case match; lower-case
   check(`every reference that resolves is an exact-case match (${refs.length} references)`, bad.length === 0, bad.slice(0, 3).join('; '));
   const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/manifest.json'), 'utf8'));
   const list = Array.isArray(manifest) ? manifest : manifest.assets;
-  check('manifest has no absolute or Windows paths', list.every((a) => !/^([A-Za-z]:|[\\/])/.test(a.file) && !/\\/.test(a.file)));
+  check('manifest has no absolute or Windows paths', list.every((a) => !/^([A-Za-z]:|[\\/])/.test(a.file) && !/\\/.test(a.file) && !/^([A-Za-z]:|[\\/])/.test(a.source || '') && !/\\/.test(a.source || '')));
   check('manifest files marked real or placeholder are served', list.filter((a) => a.status !== 'missing').every((a) => served.has(`${SUB}/assets/${a.file}`)));
   check('names are lower-case with no spaces (README aside)', [...served].every((f) => !/\s/.test(f) && (f === `${SUB}/README.md` || f === f.toLowerCase())));
   const big = [...served].filter((f) => fs.statSync(path.join(SITE, f)).size > 500 * 1024 && !/\/rules\/[a-z0-9-]+\.pdf$/.test(f));
-  check('no file over 500 KB except the printed rule book', big.length === 0, big.join(', '));
+  check('no file over 500 KB except the old printed rule book, which stays in rules/ unlinked', big.length === 0, big.join(', '));
+  check('the v4-only art is gone (mountain-6, mountain-7, brumby-front, chase) and the v5 art is all there', ['mountain-6.webp', 'mountain-7.webp', 'brumby-front.webp', 'chase.webp'].every((f) => !served.has(`${SUB}/assets/cards/${f}`)) && ['mountain-up', 'mountain-down', 'chase-2', 'chase-3', 'watch', 'colt', 'brumby-back', 'card-back', 'brumby-plus2', 'brumby-plus1', 'brumby-flint', 'brumby-wombat'].every((f) => served.has(`${SUB}/assets/cards/${f}.webp`)));
+  const cardFaces = ['escape', 'climb', 'descent', 'home'].flatMap((s) => Array.from({ length: 12 }, (_, i) => `assets/cards/card-${s}-${i + 1}.webp`));
+  check('all 48 split card faces are served and there is no fifth-suit (Muster) art', cardFaces.every((f) => served.has(`${SUB}/${f}`)) && ![...served].some((f) => /muster/i.test(f)));
+  check('config offers 2 to 4 players only', JSON.stringify(PLAYER_COUNTS) === '[2,3,4]');
 });
 
 await scenario('Landing from the sub-path', async () => {
@@ -446,13 +507,10 @@ await scenario('Landing from the sub-path', async () => {
     const abs = await page.$$eval('meta[property="og:url"], meta[property="og:image"], meta[name="twitter:image"], link[rel=canonical]', (els) => els.map((e) => e.content || e.href));
     check('og and canonical addresses are absolute https', abs.length >= 3 && abs.every((u) => /^https:\/\//.test(u)), abs.join(' '));
   }
-  const href = await page.getAttribute('a[data-action=rulebook]', 'href');
-  const r = await page.request.get(BASE + href);
-  const body = await r.body();
-  check('rule book link answers 200 and the file is a PDF', href === RULEBOOK_URL && r.status() === 200 && body.subarray(0, 4).toString() === '%PDF' && /pdf/.test(r.headers()['content-type'] || ''), `${href} ${r.status()} ${body.length} bytes`);
-  check('rule book link opens in a new tab with noopener', (await page.getAttribute('a[data-action=rulebook]', 'target')) === '_blank' && /noopener/.test(await page.getAttribute('a[data-action=rulebook]', 'rel')));
-  const rulesFiles = [...served].filter((f) => f.startsWith(`${SUB}/rules/`));
-  check('rules/ holds only the file the page links to', rulesFiles.length === 1 && rulesFiles[0] === `${SUB}/${RULEBOOK_URL}`, rulesFiles.join(', '));
+  check('only 2, 3 and 4 players are offered (5 is not)', JSON.stringify(await page.$$eval('input[name=players]', (e) => e.map((x) => x.value))) === '["2","3","4"]' && (await page.locator('input[name=players][value="5"]').count()) === 0);
+  check('the stat strip says 2-4 players', /2-4[\s\S]*Players/.test(await page.textContent('.stats')));
+  check('no rule book link anywhere on the landing page (no PDF link, no "rule book" text, no rules/ href)', (await page.locator('a[data-action=rulebook], a[href$=".pdf"], a[href*="rules/"]').count()) === 0 && !/rule\s?book/i.test(await page.textContent('body')) && !/rules\//.test(html));
+  check('How to play on the page teaches v5 (two numbers on a card, the turn, Chase or Watch)', /two numbers/.test(await page.textContent('#how')) && /turns their whole hand round/.test(await page.textContent('#how')) && /Chase/.test(await page.textContent('#how')) && /Watch/.test(await page.textContent('#how')));
   check('the favicon loads', (await (await page.request.get(`${BASE}assets/favicon.png`)).status()) === 200);
   const text = await page.textContent('body');
   check('no stray personal name or address on screen', !/@/.test(text) && !/\bDean\b(?! Morris)/.test(text));
@@ -468,6 +526,7 @@ await scenario('Card art: every face decodes at its size, the corners are clear,
   const out = await page.evaluate(async (items) => {
     const bad = [];
     const white = [];
+    const holes = [];
     for (const a of items) {
       const im = new Image();
       im.src = `assets/${a.file}`;
@@ -482,12 +541,18 @@ await scenario('Card art: every face decodes at its size, the corners are clear,
           const [r, gg, b, al] = g.getImageData(x, y, 1, 1).data;
           if (al > 200 && r > 235 && gg > 235 && b > 235) white.push(`${a.id}@${x},${y}`);
         }
+        // interior: nothing transparent in the middle of a card (a hole would show the table through the card)
+        for (const [fx, fy] of [[0.5, 0.5], [0.3, 0.3], [0.7, 0.3], [0.3, 0.7], [0.7, 0.7], [0.5, 0.15], [0.5, 0.85]]) {
+          const al = g.getImageData(Math.floor(c.width * fx), Math.floor(c.height * fy), 1, 1).data[3];
+          if (al < 255) holes.push(`${a.id}@${fx},${fy}`);
+        }
       }
     }
-    return { n: items.length, bad, white };
+    return { n: items.length, bad, white, holes };
   }, list);
   check(`all ${out.n} images in the manifest decode at the size it states`, out.bad.length === 0, out.bad.slice(0, 3).join('; '));
   check('no white patch in the corners of any card, Mountain or Colt image', out.white.length === 0, out.white.slice(0, 4).join(', '));
+  check('no transparent hole inside any card face (sampled at seven interior points)', out.holes.length === 0, out.holes.slice(0, 4).join(', '));
   check('no asset is a placeholder or missing', (Array.isArray(manifest) ? manifest : manifest.assets).every((a) => a.status === 'real'), [...new Set((Array.isArray(manifest) ? manifest : manifest.assets).map((a) => a.status))].join(','));
   await page.close();
 });
@@ -513,23 +578,26 @@ await scenario('Consent banner and analytics on a real host name', async () => {
   await page2.close();
 });
 
-await scenario('Responsive landing at every width, 5 seats', async () => {
+await scenario('Responsive landing at every width, 4 seats', async () => {
   for (const w of WIDTHS) {
     const page = await newPage(w, 900, phoneOpts(w));
     await open(page);
-    await page.check('input[name=players][value="5"]');
+    await page.check('input[name=players][value="4"]');
     check(`${w}px: no sideways scroll`, (await overflow(page)) <= 0);
-    const out = await page.evaluate((vw) => [...document.querySelectorAll('main *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > vw + 1 || r.left < -1); }).length, w);
+    const out = await page.evaluate((vw) => [...document.querySelectorAll('main *, .landing *')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > vw + 1 || r.left < -1); }).length, w);
     check(`${w}px: nothing outside the viewport`, out === 0, `${out} elements`);
-    await shot(page, `landing-5-seats-${w}`);
+    check(`${w}px: four seat forms are shown, no fifth`, (await page.locator('.seatform:visible').count()) === 4 && (await page.locator('.seatform').count()) === 4);
+    await shot(page, `landing-4-seats-${w}`);
     await page.close();
   }
 });
 
-await scenario('Human v bots to the end (every level, 2 to 5 players, every width)', async () => {
-  const matrix = [['easy', [2, 3, 4, 5]], ['medium', [2, 4]], ['hard', [3, 5]]];
+await scenario('Human v bots to the end (every level, 2 to 4 players, every width)', async () => {
+  // The full matrix at the first width; one table per level at the others.
+  const full = [['easy', [2, 3, 4]], ['medium', [2, 3, 4]], ['hard', [2, 3, 4]]];
+  const slim = [['easy', [3]], ['medium', [4]], ['hard', [2]]];
   for (const w of WIDTHS) {
-    for (const [level, counts] of matrix) {
+    for (const [level, counts] of (w === WIDTHS[0] ? full : slim)) {
       for (const n of counts) {
         const page = await newPage(w, 900, phoneOpts(w));
         await begin(page, { players: n, types: types(n, level), names: ['Mia'] }, `seed=${n}&botdelay=0`);
@@ -541,9 +609,10 @@ await scenario('Human v bots to the end (every level, 2 to 5 players, every widt
         const s = await playHuman(page, 400000);
         const tag = `${w}px ${level} ${n}p`;
         check(`${tag}: the game ends with a ranking of ${n}`, (await page.locator('.end--game').count()) === 1 && (await page.locator('.rank').count()) === n, JSON.stringify(s));
-        check(`${tag}: ${HANDS[n]} reckonings, the human played cards and chose at the summit`, s.plays >= HANDS[n] * 3 && s.summaries === HANDS[n] && s.summits >= 1, JSON.stringify(s));
+        check(`${tag}: ${HANDS[n]} reckonings were shown and the human played at least 6 cards a hand`, s.plays >= HANDS[n] * 6 && s.summaries === HANDS[n], JSON.stringify(s));
+        check(`${tag}: the human made exactly one summit choice per hand`, s.summits === HANDS[n], JSON.stringify(s));
         const W = await seen(page);
-        check(`${tag}: the Mountain was the ${n === 5 ? '0-6' : '0-7'} side and the marker reached step ${SUMMIT[n]} and never went past it`, W.sides.join() === (n === 5 ? '0-6' : '0-7') && Math.max(...W.steps) === SUMMIT[n], JSON.stringify({ sides: W.sides, max: Math.max(...W.steps) }));
+        check(`${tag}: the Mountain showed its climb side and then its descent side, the marker climbed (at instant pace the sixth step can be skipped by the turn; the Turn scenario sees it) and never went past step 6`, W.sides.slice(0, 2).join() === 'climb,descent' && Math.max(...W.steps) >= 5 && Math.max(...W.steps) <= 6 && W.markerOnDescent === 0, JSON.stringify({ sides: W.sides.slice(0, 4), max: Math.max(...W.steps), onDescent: W.markerOnDescent }));
         check(`${tag}: no sideways scroll at the end`, (await overflow(page)) <= 0);
         if (level === 'hard') {
           const gap = await page.evaluate(() => window.__gap);
@@ -551,19 +620,19 @@ await scenario('Human v bots to the end (every level, 2 to 5 players, every widt
           check(`${tag}: decisions came from the Worker`, (await page.evaluate(() => document.body.dataset.botMode)) === 'worker');
         }
         const stored = await page.evaluate((k) => JSON.parse(localStorage.getItem(k) || '{"games":[]}').games, STORE);
-        check(`${tag}: the finished game was recorded once, under the standard rules`, stored.length === 1 && stored[0].players === n && stored[0].rules_code === 'std', JSON.stringify(stored[0] && { players: stored[0].players, rules_code: stored[0].rules_code }));
-        if (n === 4 || (level === 'hard' && n === 5)) await shot(page, `${level}-${n}p-end-${w}`);
+        check(`${tag}: the finished game was recorded once, as v5 (rules_code std, rules_version 5), with ${HANDS[n]} hands`, stored.length === 1 && stored[0].players === n && stored[0].rules_code === 'std' && stored[0].rules_version === 5 && stored[0].hands === HANDS[n], JSON.stringify(stored[0] && { players: stored[0].players, rules_code: stored[0].rules_code, v: stored[0].rules_version, hands: stored[0].hands }));
+        if (w === WIDTHS[0] ? (n === 4 || n === 2) : true) await shot(page, `${level}-${n}p-end-${w}`);
         await page.close();
       }
     }
   }
 });
 
-await scenario('All-bot games at 2 to 5 seats', async () => {
-  const mixes = { 2: ['easy', 'medium'], 3: ['medium', 'hard', 'easy'], 4: ['hard', 'medium', 'easy', 'easy'], 5: ['easy', 'easy', 'medium', 'medium', 'hard'] };
+await scenario('All-bot games at 2 to 4 seats', async () => {
+  const mixes = { 2: ['easy', 'medium'], 3: ['medium', 'hard', 'easy'], 4: ['hard', 'medium', 'easy', 'easy'] };
   for (const w of WIDTHS) {
-    for (const n of [2, 3, 4, 5]) {
-      if (w !== WIDTHS[0] && n !== 5) continue; // every count at the first width, the biggest table at the others
+    for (const n of COUNTS) {
+      if (w !== WIDTHS[0] && n !== 4) continue; // every count at the first width, the biggest table at the others
       const page = await newPage(w, 900, phoneOpts(w));
       await begin(page, { players: n, types: mixes[n] }, `seed=${n + 20}&botdelay=0`);
       await finish(page);
@@ -571,36 +640,40 @@ await scenario('All-bot games at 2 to 5 seats', async () => {
       check(`${w}px ${n} bots: no hand is shown`, (await page.locator('.hand .card').count()) === 0);
       const stored = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)).games[0], STORE);
       check(`${w}px ${n} bots: recorded with ${HANDS[n]} hands and no human seat`, stored.hands === HANDS[n] && stored.seats.every((s) => s.type === 'bot'));
-      if (n === 4 || n === 5) await shot(page, `bots-${n}-end-${w}`);
+      if (n === 4 || n === 2) await shot(page, `bots-${n}-end-${w}`);
       await page.close();
     }
   }
 });
 
-await scenario('Pass-and-play: covers, and the summit choices stay secret', async () => {
+await scenario('Pass-and-play: covers, the secret summit choice, and the cards turned together', async () => {
   for (const [n, humans, w] of [[2, 2, 1440], [3, 2, 390], [4, 3, 1024], [3, 3, 1440]]) {
     const page = await newPage(w, 900, phoneOpts(w));
     await page.addInitScript(() => {
       window.__seenBehindCover = 0;
-      // Every cover and every summit modal, in order, recorded at the moment the DOM changes (not by polling, which
+      // Every cover, summit modal and reveal, in order, recorded at the moment the DOM changes (not by polling, which
       // can miss a cover that is confirmed between two polls when the bots play instantly).
       window.__trace = [];
       document.addEventListener('DOMContentLoaded', () => {
         let last = '';
+        let revealOn = false;
         new MutationObserver(() => {
-          if (document.querySelector('.cover') && document.querySelector('.hand, .card, .table, .seat, .log__list, .mountain, .decision, .schip')) window.__seenBehindCover++;
+          if (document.querySelector('.cover') && document.querySelector('.hand, .card, .table, .seat, .log__list, .mountain, .row, .decision, .schip')) window.__seenBehindCover++;
           const cover = document.querySelector('.cover');
           const modal = document.querySelector('.overlay--summit');
+          const rev = document.querySelector('.overlay--reveal');
+          if (rev && !revealOn) window.__trace.push({ kind: 'reveal', faces: rev.querySelectorAll('.reveal__card').length, names: [...rev.querySelectorAll('.reveal__who')].map((e) => e.textContent) });
+          revealOn = !!rev;
           let ev = null;
           if (cover) ev = { kind: 'cover', name: (/Pass to (\S+)/.exec(cover.textContent) || [])[1] || null, summit: /Chase or Watch in secret/.test(cover.textContent) };
-          else if (modal) ev = { kind: 'modal', name: ((document.querySelector('#summit-title') || { textContent: '' }).textContent.match(/^(\S+?)[,:]/) || [])[1] || null, sides: document.querySelectorAll('.seat .schip--chase, .seat .schip--watch').length, own: document.querySelectorAll('.seat .schip--own').length };
+          else if (modal) ev = { kind: 'modal', name: ((document.querySelector('#summit-title') || { textContent: '' }).textContent.match(/^(\S+?)[,:]/) || [])[1] || null, sides: document.querySelectorAll('.seat .schip--chase, .seat .schip--watch').length, own: document.querySelectorAll('.seat .schip--own').length, reveal: !!rev };
           const key = ev ? JSON.stringify(ev) : '';
           if (ev && key !== last) window.__trace.push(ev);
           if (ev) last = key;
         }).observe(document.body, { childList: true, subtree: true });
       });
     });
-    await begin(page, { players: n, types: Array.from({ length: n }, (_, i) => (i < humans ? 'human' : 'easy')), names: ['Ann', 'Bo', 'Cy'] }, `seed=${n + 40}&botdelay=0`);
+    await begin(page, { players: n, types: Array.from({ length: n }, (_, i) => (i < humans ? 'human' : 'easy')), names: ['Ann', 'Bo', 'Cy'] }, `seed=${n + 40}&botdelay=40`);
     await page.waitForSelector('.cover', { timeout: 30000 });
     const tag = `${humans} humans in ${n}p at ${w}px`;
     if (w < 700) await shot(page, `cover-${n}p-${w}`);
@@ -610,7 +683,7 @@ await scenario('Pass-and-play: covers, and the summit choices stay secret', asyn
     check(`${tag}: the bug button is hidden under the cover and Ctrl+Shift+B opens nothing`, !(await page.isVisible('#bug-button')) && await (async () => { await page.keyboard.press('Control+Shift+B'); await page.waitForTimeout(150); return (await page.locator('.bug, #bug-form').count()) === 0; })());
     // Play on, looking at every cover and every summit modal on the way.
     const st = newStats();
-    const obs = { noCover: 0, summitCovers: 0, summitModals: 0, coverLeak: 0, bugVisible: 0, sidesShown: 0, nameMismatch: 0, ownChipEarly: 0 };
+    const obs = { summitCovers: 0, summitModals: 0, coverLeak: 0, bugVisible: 0, sidesShown: 0, nameMismatch: 0, ownChipEarly: 0 };
     let lastCoverName = null;
     let coverSeenLast = false;
     const deadline = Date.now() + 200000;
@@ -622,12 +695,11 @@ await scenario('Pass-and-play: covers, and the summit choices stay secret', asyn
         lastCoverName = (/Pass to (\S+)/.exec(txt) || [])[1] || null;
         if (/Chase or Watch in secret/.test(txt)) {
           obs.summitCovers++;
-          if (await page.locator('.mountain, .decision, .overlay, .seat, .hand, #log, .schip').count()) obs.coverLeak++;
+          if (await page.locator('.mountain, .decision, .overlay, .seat, .hand, #log, .schip, .row').count()) obs.coverLeak++;
         }
         if (await page.isVisible('#bug-button')) obs.bugVisible++;
       } else if (await page.locator('.overlay--summit').count()) {
         obs.summitModals++;
-        if (!coverSeenLast) obs.noCover++;
         if (await page.locator('.seat .schip--chase, .seat .schip--watch').count()) obs.sidesShown++;
         if (await page.locator('.seat .schip--own').count()) obs.ownChipEarly++;
         const title = await page.textContent('#summit-title');
@@ -639,26 +711,29 @@ await scenario('Pass-and-play: covers, and the summit choices stay secret', asyn
     check(`${tag}: the game ends`, (await page.locator('.end--game').count()) === 1, JSON.stringify(st));
     check(`${tag}: a cover before every human decision, never a leak`, st.covers >= 6 && st.leaks === 0 && (await page.evaluate(() => window.__seenBehindCover)) === 0, JSON.stringify(st));
     check(`${tag}: a "Chase or Watch in secret" cover came before each human summit choice, with nothing of the table behind it and the bug button dead`, obs.summitCovers >= humans && obs.summitModals >= humans && obs.coverLeak === 0 && obs.bugVisible === 0, JSON.stringify(obs));
-    // The verdict comes from the in-page trace (every cover and modal as it was drawn), not from the polling above.
+    // The verdict comes from the in-page trace (every cover, modal and reveal as it was drawn), not from the polling above.
     const trace = await page.evaluate(() => window.__trace);
-    const tr = { modals: 0, noCover: 0, nameMismatch: 0, sides: 0, own: 0, first: null };
+    const tr = { modals: 0, noCover: 0, nameMismatch: 0, sides: 0, own: 0, first: null, reveals: 0, revealFaces: [], modalsPerName: {} };
     trace.forEach((e, i) => {
+      if (e.kind === 'reveal') { tr.reveals++; tr.revealFaces.push(e.faces); return; }
       if (e.kind !== 'modal') return;
       tr.modals++;
+      tr.modalsPerName[e.name] = (tr.modalsPerName[e.name] || 0) + 1;
       const prev = trace[i - 1];
       if (!prev || prev.kind !== 'cover' || !prev.summit) { tr.noCover++; tr.first = tr.first || `modal for ${e.name} with no summit cover just before (${prev ? `${prev.kind} for ${prev.name}` : 'nothing'})`; }
       else if (prev.name !== e.name) { tr.nameMismatch++; tr.first = tr.first || `cover for ${prev.name} then modal for ${e.name}`; }
       tr.sides += e.sides; tr.own += e.own;
     });
-    check(`${tag}: at every summit modal no seat shows a side, nobody's own choice is already on show, and it is addressed to the player named on the cover, and a cover came immediately before it`, tr.modals >= humans && tr.sides === 0 && tr.own === 0 && tr.nameMismatch === 0 && tr.noCover === 0 && obs.sidesShown === 0 && obs.ownChipEarly === 0, JSON.stringify({ trace: tr, polled: obs }));
+    check(`${tag}: every human got their own summit cover and modal in every hand (${humans} x ${HANDS[n]}), none shows a side, nobody's own choice is already on show, and each modal follows its own cover`, tr.modals === humans * HANDS[n] && Object.values(tr.modalsPerName).every((k) => k === HANDS[n]) && tr.sides === 0 && tr.own === 0 && tr.nameMismatch === 0 && tr.noCover === 0 && obs.sidesShown === 0 && obs.ownChipEarly === 0, JSON.stringify({ trace: tr, polled: obs }));
+    check(`${tag}: the cards were turned together, once a hand, with a face for each of the ${n} seats, only after the last choice`, tr.reveals === HANDS[n] && tr.revealFaces.every((f) => f === n), JSON.stringify({ reveals: tr.reveals, faces: tr.revealFaces }));
     await page.close();
   }
 });
 
-await scenario('Summit: the modal, the reveal order and the dimmed backdrop', async () => {
-  for (const [w, n] of [...WIDTHS.map((x) => [x, 4]), [WIDTHS[0], 2], [WIDTHS[0], 3], [WIDTHS[0], 5]]) {
+await scenario('Summit: the modal, Chase cost by player count, the reveal order and the dimmed backdrop', async () => {
+  for (const [w, n] of [...WIDTHS.map((x) => [x, 4]), [WIDTHS[0], 2], [WIDTHS[0], 3]]) {
     const page = await newPage(w, 900, phoneOpts(w));
-    const tg = TARGETS[`reveal${n}`];
+    const tg = revealTarget(n);
     if (!check(`${w}px ${n}p: a seed whose summit is collected from another seat than yours was found`, !!tg)) { await page.close(); continue; }
     await begin(page, { players: n, types: types(n) }, `seed=${tg.seed}&botdelay=1000`);
     await page.waitForSelector('.hand .card.is-legal', { timeout: 30000 });
@@ -673,8 +748,22 @@ await scenario('Summit: the modal, the reveal order and the dimmed backdrop', as
     page.__noDecide = false;
     const tag = `${w}px ${n}p`;
     check(`${tag}: the summit modal comes up`, (await page.locator('.overlay--summit').count()) === 1);
-    check(`${tag}: the summit modal states the descent rule and the banner states the 1-12 range`, /To bring the mob home you must win the most descent tricks; a tie goes to whoever won the later trick\./.test(await page.textContent('.overlay--summit')) && /Cards run 1 to 12 in each suit/.test(await page.textContent('.phasebar')));
-    check(`${tag}: no seat shows a side before the reveal`, (await page.locator('.seat .schip--chase, .seat .schip--watch').count()) === 0);
+    await page.waitForFunction(() => [...document.querySelectorAll('.overlay--summit img')].every((i) => i.complete), null, { timeout: 8000 }).catch(() => {});
+    const m = await page.evaluate(() => {
+      const o = document.querySelector('.overlay--summit');
+      const r = o.querySelector('.end').getBoundingClientRect();
+      return {
+        text: o.textContent, dialog: !!o.querySelector('[role=dialog][aria-modal=true]'), row: o.querySelectorAll('.summit__brumby').length, hand: o.querySelectorAll('.summit__hand li').length,
+        handTurned: [...o.querySelectorAll('.summit__hand img')].every((i) => i.classList.contains('is-turned')), buttons: o.querySelectorAll('[data-action=decide]').length,
+        chase: o.querySelector('.decide--chase .decide__card').getAttribute('src'), watch: o.querySelector('.decide--watch .decide__card').getAttribute('src'),
+        loaded: [...o.querySelectorAll('img')].every((i) => i.complete && i.naturalWidth > 0), fits: r.left >= 0 && r.right <= innerWidth, banner: document.querySelector('.phasebar').textContent,
+        sidesOnSeats: document.querySelectorAll('.seat .schip--chase, .seat .schip--watch').length, over: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      };
+    });
+    check(`${tag}: the modal shows your turned hand (6 cards, rotated), the six-card Brumby row and a Chase and a Watch card, all loaded`, m.dialog && m.row === 6 && m.hand === 6 && m.handTurned && m.buttons === 2 && m.loaded && /Your hand, turned round/.test(m.text), JSON.stringify({ ...m, text: undefined }));
+    check(`${tag}: Chase costs ${COST[n]} (the chase-${COST[n]} face, "Chase: pay ${COST[n]}"), Watch pays nothing`, m.chase === `assets/cards/chase-${COST[n]}.webp` && m.watch === 'assets/cards/watch.webp' && new RegExp(`Chase: pay ${COST[n]}`).test(m.text) && /Watch: pay nothing/.test(m.text) && new RegExp(`A chaser pays ${COST[n]} at the end of the hand`).test(m.text), JSON.stringify({ chase: m.chase }));
+    check(`${tag}: the banner says the summit, hands turned, Home is trumps`, /The summit/.test(m.banner) && /Hands turned/.test(m.banner) && /Home is trumps/.test(m.banner), m.banner);
+    check(`${tag}: no seat shows a side before the reveal, the modal fits and nothing scrolls sideways`, m.sidesOnSeats === 0 && m.fits && m.over <= 0);
     await page.waitForTimeout(80);
     await shot(page, `summit-modal-${n}p-${w}`);
     await dimCheck(page, `${tag} summit modal`);
@@ -694,43 +783,97 @@ await scenario('Summit: the modal, the reveal order and the dimmed backdrop', as
   }
 });
 
-await scenario('Every way a hand ends, at every width', async () => {
-  for (const [kind, target] of Object.entries(KINDS).map(([k]) => [k, TARGETS[k]])) {
-    if (!check(`a game with "${kind}" was found by seed search`, !!target)) continue;
-    for (const w of WIDTHS) {
+await scenario('The hand turns at the summit and the Mountain card turns over', async () => {
+  const SUIT_ORDER = ['escape', 'climb', 'descent', 'home'];
+  const order = (cards, key) => cards.every((c, i) => {
+    if (i === 0) return true;
+    const p = cards[i - 1];
+    const sp = SUIT_ORDER.indexOf(p.suit); const sc = SUIT_ORDER.indexOf(c.suit);
+    return sp < sc || (sp === sc && key(p.v) < key(c.v));
+  });
+  const parse = (id) => { const [suit, v] = id.split('-'); return { suit, v: Number(v) }; };
+  for (const [w, n] of [...WIDTHS.map((x) => [x, 4]), [WIDTHS[0], 2], [WIDTHS[0], 3]]) {
+    const page = await newPage(w, 900, phoneOpts(w));
+    await begin(page, { players: n, types: types(n), names: ['Mia'] }, 'seed=11&botdelay=150');
+    await page.waitForSelector('.hand .card.is-legal', { timeout: 30000 });
+    await watch(page);
+    const tag = `${w}px ${n}p`;
+    await page.waitForFunction(() => [...document.querySelectorAll('.hand .cardimg')].every((i) => i.complete), null, { timeout: 8000 }).catch(() => {});
+    const before = await page.evaluate(() => ({ cards: [...document.querySelectorAll('.hand .card')].map((e) => e.dataset.card), turned: document.querySelectorAll('.hand--turned, .hand .is-turned').length, src: document.querySelector('.mountain__img').getAttribute('src'), side: document.querySelector('.mountain').dataset.side, trump: document.querySelector('.mountain__trump').textContent.trim(), marker: document.querySelectorAll('.mountain__marker').length }));
+    check(`${tag} before the summit: 12 cards climb side up in suit order, ascending by the climb number; the Mountain shows its climb side with the marker; Escape is trumps going up`, before.cards.length === 12 && before.turned === 0 && order(before.cards.map(parse), (v) => v) && before.src === 'assets/cards/mountain-up.webp' && before.side === 'climb' && before.marker === 1 && /Escape is trumps going up/.test(before.trump), JSON.stringify(before));
+    await shot(page, `climb-start-${n}p-${w}`);
+    // play up to the summit, then through to the first descent card
+    const st = newStats();
+    const until = Date.now() + 45000;
+    let after = null;
+    while (Date.now() < until && !after) {
+      const r = await humanStep(page, st);
+      if (r === 'end') break;
+      if (await page.locator('.phasebar--descent').count() && (await page.locator('.hand--turned .card.is-legal').count()) > 0 && !(await page.locator('.overlay--turn, .overlay--reveal').count())) {
+        await page.waitForFunction(() => [...document.querySelectorAll('.hand .cardimg')].every((i) => i.complete), null, { timeout: 5000 }).catch(() => {});
+        after = await page.evaluate(() => ({
+          cards: [...document.querySelectorAll('.hand .card')].map((e) => e.dataset.card),
+          allTurned: [...document.querySelectorAll('.hand .card img')].every((i) => i.classList.contains('is-turned')),
+          matrix: [...document.querySelectorAll('.hand .card img')].map((i) => getComputedStyle(i).transform),
+          src: document.querySelector('.mountain__img').getAttribute('src'), side: document.querySelector('.mountain').dataset.side,
+          trump: document.querySelector('.mountain__trump').textContent.trim(), marker: document.querySelectorAll('.mountain__marker').length,
+          legend: (document.querySelector('.handbox__title') || {}).textContent, banner: document.querySelector('.phasebar').textContent,
+        }));
+        await shot(page, `descent-first-${n}p-${w}`);
+      }
+    }
+    const W = await seen(page);
+    const rot = (t) => { const m = /matrix\(([^)]+)\)/.exec(t); if (!m) return false; const [a, b, c, d] = m[1].split(',').map(Number); return a < -0.99 && d < -0.99 && Math.abs(b) < 0.01 && Math.abs(c) < 0.01; };
+    check(`${tag} after the summit: the hand is six cards, every one rotated 180 degrees, in suit order ascending by the number now on top (13 minus the climb number)`,
+      !!after && after.cards.length === 6 && after.allTurned && after.matrix.every(rot) && order(after.cards.map(parse), (v) => 13 - v), JSON.stringify(after && { cards: after.cards, turned: after.allTurned, m: after.matrix[0] }));
+    check(`${tag} after the summit: the Mountain card turned over (descent side, no marker) and Home is trumps going down; the hand heading says turned round`, !!after && after.src === 'assets/cards/mountain-down.webp' && after.side === 'descent' && after.marker === 0 && /Home is trumps going down/.test(after.trump) && /turned round/.test(after.legend), JSON.stringify(after && { src: after.src, trump: after.trump, legend: after.legend }));
+    check(`${tag} the turn is its own beat ("Everyone turns their hand round" was shown), the hand was never half turned, no marker stood on the descent side`, W.turnBeats > 0 && W.upright === 0 && W.turnedFrames > 0 && W.markerOnDescent === 0, JSON.stringify({ beats: W.turnBeats, upright: W.upright, frames: W.turnedFrames }));
+    check(`${tag} the marker climbed one step per trick, 0 to 6, and the Mountain went climb then descent`, Math.max(...W.steps) === 6 && W.steps.slice(0, 7).join() === '0,1,2,3,4,5,6' && W.sides.slice(0, 2).join() === 'climb,descent', JSON.stringify({ steps: W.steps.slice(0, 10), sides: W.sides.slice(0, 3) }));
+    check(`${tag} the three phase banners were shown in order: climb, summit, descent`, W.phases.slice(0, 3).join() === 'climb,summit,descent', W.phases.join());
+    check(`${tag}: no sideways scroll`, (await overflow(page)) <= 0);
+    await page.close();
+  }
+});
+
+await scenario('Every kind of hand: the reckoning, the row and the kept cards', async () => {
+  for (const kind of Object.keys(KINDS)) {
+    const t = handTarget(kind);
+    if (!check(`a game with "${kind}" was found by seed search`, !!t)) continue;
+    const widths = kind === 'nobody chases' || kind === 'everyone chases' || kind === 'the Colt in the row, kept by a chaser' ? WIDTHS : [WIDTHS[0], WIDTHS[WIDTHS.length - 1]];
+    for (const w of widths) {
       const page = await newPage(w, 900, phoneOpts(w));
-      page.__policy = target.policy;
-      await begin(page, { players: target.players, types: types(target.players), names: ['Mia'] }, `seed=${target.seed}&botdelay=0`);
+      page.__policy = t.policy;
+      await begin(page, { players: t.players, types: types(t.players), names: ['Mia'] }, `seed=${t.seed}&botdelay=0`);
       await page.waitForSelector('.hand .card.is-legal', { timeout: 30000 });
       await watch(page);
-      const wantTitle = `Hand ${target.handIdx + 1} of `;
-      const s1 = await playHuman(page, 120000, null, { stopAtReckoning: async () => (await page.textContent('#hand-title')).startsWith(wantTitle) });
-      const tag = `${w}px ${kind}`;
-      if (!check(`${tag}: the reckoning of hand ${target.handIdx + 1} came up`, s1.stopped === 'stop' && (await page.locator('.overlay--hand').count()) === 1, JSON.stringify(s1))) { await page.close(); continue; }
+      const wantTitle = `Hand ${t.handIdx + 1} of `;
+      const s1 = await playHuman(page, 120000, null, { stopAtReckoning: async () => (await page.textContent('#hand-title')).startsWith(wantTitle), onSummary: () => resetWatch(page) });
+      const tag = `${w}px ${kind} (${t.players}p)`;
+      if (!check(`${tag}: the reckoning of hand ${t.handIdx + 1} came up`, s1.stopped === 'stop' && (await page.locator('.overlay--hand').count()) === 1, JSON.stringify(s1))) { await page.close(); continue; }
+      await page.waitForFunction(() => [...document.querySelectorAll('.reck img')].every((i) => i.complete), null, { timeout: 5000 }).catch(() => {});
       const rec = await readReckoning(page);
-      const ev = target.ev;
-      const kindCls = ev.endReason === 'nobody-chases' ? 'nobody' : ev.broughtHomeBy !== null ? 'home' : 'escaped';
-      check(`${tag}: the reckoning is the "${kindCls}" kind and has a row per seat`, rec.cls.includes(`end--${kindCls}`) && rec.rows.length === target.players, rec.cls);
-      check(`${tag}: every score and running total matches the engine's own`, rec.rows.map((r) => r.score).join() === ev.scores.join() && rec.rows.map((r) => r.total).join() === ev.totals.join(), `${rec.rows.map((r) => r.score)} vs ${ev.scores}; ${rec.rows.map((r) => r.total)} vs ${ev.totals}`);
-      check(`${tag}: each row names the Chase or Watch card that seat showed`, rec.rows.every((r, i) => r.choice === (ev.choices[i] === 'chase' ? 'Chase' : 'Watch')));
-      const homes = rec.rows.filter((r) => r.cls.includes('reck__row--home'));
-      const falls = rec.rows.filter((r) => r.cls.includes('reck__row--fell'));
-      if (kindCls === 'home') {
-        const row = homes[0];
-        const m = row && /^(\d+) climb \+ (\d+) mob$/.exec(row.sum);
-        check(`${tag}: exactly one seat brought the mob home, its score is climb tricks + the mob (${ev.mobValue}), every other chaser fell for -1`,
-          homes.length === 1 && m && Number(m[1]) + Number(m[2]) === row.score && Number(m[2]) === ev.mobValue && falls.length === chasersOf(ev) - 1 && falls.every((r) => r.score === -1), JSON.stringify({ homes: homes.length, falls: falls.length, sum: row && row.sum }));
-        check(`${tag}: ${chasersOf(ev) === 1 ? 'the lone chaser' : `one of ${chasersOf(ev)} chasers`} is named in the note, which says the mob came home`, /brought it home/.test(rec.lead) && /Brumby cards go back to the box/.test(rec.lead), rec.lead);
-      } else if (kindCls === 'escaped') {
-        const heelsRow = rec.rows.find((r) => r.heels);
-        check(`${tag}: nobody brought it home, every chaser fell for -1, and a watcher is marked at the heels`, homes.length === 0 && falls.length === chasersOf(ev) && falls.every((r) => r.score === -1) && heelsRow && heelsRow.choice === 'Watch', JSON.stringify({ homes: homes.length, falls: falls.length, heels: heelsRow && heelsRow.choice }));
-        check(`${tag}: the note says the mob escaped and a Brumby card goes under the Colt`, /watched, so the mob escaped/.test(rec.lead) && /Brumby card goes under the Colt/.test(rec.lead), rec.lead);
-      } else {
-        check(`${tag}: every seat watched and banked its climb tricks (no falls, no mob)`, rec.rows.every((r) => r.choice === 'Watch' && r.score >= 0) && homes.length === 0 && falls.length === 0, JSON.stringify(rec.rows.map((r) => [r.choice, r.score])));
-        check(`${tag}: the note says nobody chased and the mob ran free`, /Nobody chased/.test(rec.lead) && /mob ran free/.test(rec.lead) && /Brumby card goes under the Colt/.test(rec.lead), rec.lead);
-      }
+      const ev = t.ev;
+      const rowsOk = rec.rows.length === t.players && rec.rows.every((r, s) => {
+        const e = expectedRow(ev.breakdown[s]);
+        return r.seat === s && r.ud === e.ud && r.choice === e.choice && r.sum === e.sum && r.kept === e.kept && r.cls.includes(`reck__row--${ev.breakdown[s].choice}`);
+      });
+      check(`${tag}: a row per seat, each with its tricks up and down, Chase/Watch card, the sum, the Brumby cards kept (${ev.kept.map((k) => k.length).join('/')}) and the Chase cost, as the engine has them`, rowsOk, JSON.stringify(rec.rows.map((r) => [r.ud, r.choice, r.sum, r.kept])) + ' vs ' + JSON.stringify(ev.breakdown.map(expectedRow).map((e) => [e.ud, e.choice, e.sum, e.kept])));
+      check(`${tag}: every hand score and running total matches the engine's own`, rec.rows.map((r) => r.score).join() === ev.scores.join() && rec.rows.map((r) => r.total).join() === ev.totals.join(), `${rec.rows.map((r) => r.score)} vs ${ev.scores}; ${rec.rows.map((r) => r.total)} vs ${ev.totals}`);
+      check(`${tag}: the Chase cost shown is ${COST[t.players]} for ${t.players} players`, rec.rows.filter((r) => /^Chase/.test(r.choice)).every((r) => r.choice === `Chase -${COST[t.players]}`));
+      check(`${tag}: the lead note gives the row's value (${signed(ev.rowValue)}) and its six cards`, rec.lead.includes(`The row was worth ${signed(ev.rowValue)}: ${ev.row.map((id) => signed(brumbyValue(id))).join(' ')}.`), rec.lead);
+      if (ev.chasers === 0) check(`${tag}: the note says nobody chased and every Brumby card was sent off`, /Nobody chased, so every Brumby card was sent off/.test(rec.lead) && rec.rows.every((r) => r.choice === 'Watch' && r.kept === 0), rec.lead);
+      else check(`${tag}: the note does not claim that nobody chased`, !/Nobody chased/.test(rec.lead));
+      if (ev.colt) check(`${tag}: the Colt is explained (${ev.coltKept ? 'won and kept' : 'won by a watcher and sent off'})`, ev.coltKept ? /won the Colt/.test(rec.lead) && /\+4\) and kept it/.test(rec.lead) : /was won by .*who watched, so it was sent off/.test(rec.lead), rec.lead);
+      else check(`${tag}: no Colt in the row, none mentioned`, !/Colt/.test(rec.lead));
+      check(`${tag}: ${ev.reshuffleNext ? 'the note says the 12 Brumby cards are shuffled again' : 'no reshuffle is announced'}`, /Fewer than 6 Brumby cards are left, so all 12 are shuffled/.test(rec.foot) === !!ev.reshuffleNext, rec.foot);
+      check(`${tag}: the button reads "Deal the next hand"`, rec.button === 'Deal the next hand', rec.button);
+      const W = await seen(page);
+      const keptTotal = ev.kept.reduce((a, k) => a + k.length, 0);
+      check(`${tag} on the table: all six row cards were taken (${keptTotal} kept by chasers, ${6 - keptTotal} sent off), the next prize was lit, kept cards showed on the chasers' seats${ev.colt && ev.coltKept ? ', the Colt among them' : ''}`,
+        W.rowTakenMax === 6 && W.takenKept === keptTotal && W.takenOff === 6 - keptTotal && W.nextLit >= 1 && W.keptMax === keptTotal && W.coltSeenKept === !!(ev.colt && ev.coltKept) && W.coltInRow === !!ev.colt, JSON.stringify(W));
+      check(`${tag} on the table: the discard pile grew by the ${6 - keptTotal} Brumby cards sent off`, W.discardMax >= 6 - keptTotal, `${W.discardMax}`);
       check(`${tag}: no sideways scroll with the reckoning up`, (await overflow(page)) <= 0);
-      await shot(page, `${kindCls}-${slug(kind)}-${w}`);
+      await shot(page, `${slug(kind)}-${w}`);
       await dimCheck(page, `${tag} reckoning`);
       await tryClick(page.locator('#continue'));
       const s2 = await playHuman(page, 120000);
@@ -740,61 +883,8 @@ await scenario('Every way a hand ends, at every width', async () => {
   }
 });
 
-await scenario('The Brumby cap: four cards under the Colt, the mob worth 11', async () => {
-  const t = TARGETS.cap;
-  if (!check('a five-player game with four escapes in a row was found by seed search', !!t)) return;
-  for (const w of WIDTHS) {
-    const page = await newPage(w, 900, phoneOpts(w));
-    page.__policy = t.policy;
-    await begin(page, { players: 5, types: types(5), names: ['Mia'] }, `seed=${t.seed}&botdelay=0`);
-    await page.waitForSelector('.hand .card.is-legal', { timeout: 30000 });
-    await watch(page);
-    const tag = `${w}px`;
-    const s1 = await playHuman(page, 200000, null, { stopAtReckoning: async () => (await page.textContent('#hand-title')).startsWith(`Hand ${t.handIdx + 1} of `) });
-    check(`${tag}: hand ${t.handIdx + 1} is reached`, s1.stopped === 'stop', JSON.stringify(s1));
-    const W = await seen(page);
-    check(`${tag}: the stack grew one Brumby card at a time, 0 1 2 3 4, and never past 4`, W.brumbies.join() === '0,1,2,3,4' && W.brumbyMax === 4, W.brumbies.join());
-    check(`${tag}: the mob was worth 3, 5, 7, 9 and then 11`, W.mobs.join() === '3,5,7,9,11', W.mobs.join());
-    const rec = await readReckoning(page);
-    if (t.ev.brumbyAtCap) check(`${tag}: the fifth escape says all four Brumby cards are already under the Colt`, /All 4 Brumby cards are already under the Colt, so nothing is added/.test(rec.lead), rec.lead);
-    check(`${tag}: the reckoning matches the engine's scores`, rec.rows.map((r) => r.score).join() === t.ev.scores.join(), `${rec.rows.map((r) => r.score)} vs ${t.ev.scores}`);
-    await tryClick(page.locator('#continue'));
-    await page.waitForSelector('.end--game');
-    await page.click('[data-action=review]');
-    const colt = await page.evaluate(() => ({ brumbies: document.querySelectorAll('.colt .brumby').length, mob: document.querySelector('[data-mob]').textContent, sum: document.querySelector('.mob__sum').textContent, overflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth }));
-    check(`${tag}: after the last hand the Colt still shows four Brumby cards and the sum "3 + 4 x 2"`, colt.brumbies === 4 && /Colt 3 \+ 4 Brumby cards x 2/.test(colt.sum) && colt.overflowX <= 0, JSON.stringify(colt));
-    await page.locator('.colt').scrollIntoViewIfNeeded();
-    await shot(page, `cap-${w}`);
-    await page.close();
-  }
-});
-
-await scenario('The 5-player Mountain: the 0-6 side, summit at step 6', async () => {
-  for (const w of WIDTHS) {
-    const page = await newPage(w, 900, phoneOpts(w));
-    await begin(page, { players: 5, types: types(5), names: ['Mia'] }, 'seed=21&botdelay=0');
-    await page.waitForSelector('.hand .card.is-legal');
-    const info = await page.evaluate(() => ({ side: document.querySelector('.mountain').dataset.side, src: document.querySelector('.mountain__img').getAttribute('src'), text: document.querySelector('.mountain').textContent, loaded: document.querySelector('.mountain__img').naturalWidth > 0 }));
-    check(`${w}px: five players get the 0-6 card (mountain-6) and the title says step 0 of 6`, info.side === '0-6' && /mountain-6/.test(info.src) && /on step 0 of 6/.test(info.text.replace(/\s+/g, ' ')) && info.loaded, JSON.stringify(info));
-    await page.locator('.mountain').scrollIntoViewIfNeeded();
-    await shot(page, `mountain-5p-${w}`);
-    await watch(page);
-    const st = newStats();
-    const until = Date.now() + 60000;
-    while (Date.now() < until && !(await page.locator('.overlay--summit').count())) await humanStep(page, st);
-    const marker = await page.evaluate(() => ({ step: document.querySelector('.mountain__marker').dataset.step, text: document.querySelector('.mountain__title').textContent }));
-    check(`${w}px: the summit modal came up with the mob on step 6, not 7`, marker.step === '6' && /step 6 of 6/.test(marker.text), JSON.stringify(marker));
-    await page.close();
-    const p4 = await newPage(w, 900, phoneOpts(w));
-    await begin(p4, { players: 4, types: types(4), names: ['Mia'] }, 'seed=21&botdelay=0');
-    await p4.waitForSelector('.hand .card.is-legal');
-    check(`${w}px: four players get the 0-7 card`, (await p4.getAttribute('.mountain', 'data-side')) === '0-7' && /mountain-7/.test(await p4.getAttribute('.mountain__img', 'src')));
-    await p4.close();
-  }
-});
-
 await scenario('Ties: the tiebreak decides one game, a shared win ends another', async () => {
-  for (const [label, t] of [['tiebreak', TARGETS.tiebreak], ['shared', TARGETS.shared]]) {
+  for (const [label, t] of [['tiebreak', tieTarget()], ['shared', sharedTarget()]]) {
     if (!check(`an all-bot game with a ${label === 'shared' ? 'shared win' : 'tiebreak'} was found by seed search`, !!t)) continue;
     for (const w of [WIDTHS[0], WIDTHS[WIDTHS.length - 1]]) {
       const page = await newPage(w, 900, phoneOpts(w));
@@ -806,14 +896,18 @@ await scenario('Ties: the tiebreak decides one game, a shared win ends another',
         head: document.querySelector('#end-title').textContent,
         tb: (document.querySelector('#tiebreak') || {}).textContent || '',
         winners: document.querySelectorAll('.rank.is-winner').length,
+        winnerNames: [...document.querySelectorAll('.rank.is-winner .rank__who b')].map((e) => e.textContent),
         ranks: [...document.querySelectorAll('.rank__pos')].map((e) => e.textContent),
         totals: [...document.querySelectorAll('.rank__total b')].map((e) => Number(e.textContent)),
+        lastHand: [...document.querySelectorAll('.rank__total small')].map((e) => e.textContent),
         crowns: [...document.querySelectorAll('.crown')].map((e) => e.textContent),
       }));
       check(`${tag}: the totals on screen are the engine's`, [...out.totals].sort().join() === [...r.totals].sort().join(), `${out.totals} vs ${r.totals}`);
-      check(`${tag}: ${r.winners.length} winner${r.winners.length === 1 ? '' : 's'} marked`, out.winners === r.winners.length, JSON.stringify(out));
+      check(`${tag}: ${r.winners.length} winner${r.winners.length === 1 ? '' : 's'} marked, the engine's seats`, out.winners === r.winners.length && [...out.winnerNames].sort().join() === r.winners.map((s) => t.names[s]).sort().join(), `${out.winnerNames} vs ${r.winners.map((s) => t.names[s])}`);
+      check(`${tag}: each ranking line shows the last-hand score`, out.lastHand.length === t.players && out.lastHand.every((x) => /^last hand -?\d+$/.test(x)));
+      const tied = r.tiedOnTotal.map((s) => t.names[s]);
       if (label === 'tiebreak') {
-        check(`${tag}: the tiebreak line names the tied seats, mobs brought home and the winner`, /tied on \d+/.test(out.tb) && /Tiebreak: who brought the mob home most often/.test(out.tb) && /Mobs brought home:/.test(out.tb) && /\bwins?\b/.test(out.tb), out.tb);
+        check(`${tag}: the tiebreak line names the tied seats, the total, the last-hand points and the winner`, new RegExp(`tied on ${r.winningScore}\\.`).test(out.tb) && tied.every((nm) => out.tb.includes(nm)) && /Tiebreak: the most points in the last hand/.test(out.tb) && /Points in the last hand: /.test(out.tb) && /\bwins?\b/.test(out.tb) && !/share the win|Still level/.test(out.tb), out.tb);
         check(`${tag}: the headline is not a shared win and the crown says Winner`, !/Shared/.test(out.head) && out.crowns.every((c) => c === 'Winner'), out.head);
       } else {
         check(`${tag}: the headline says shared win and the tiebreak line says still level`, /^Shared win/.test(out.head) && /Still level, so the win is shared/.test(out.tb) && out.crowns.every((c) => c === 'Shared win'), `${out.head} / ${out.tb}`);
@@ -826,11 +920,32 @@ await scenario('Ties: the tiebreak decides one game, a shared win ends another',
   }
 });
 
-await scenario('Stats screen and exports', async () => {
-  const page = await newPage();
+await scenario('Stats screen, exports, a migrated v4 record and analytics', async () => {
+  const V4_RECORD = {
+    v: 1, id: 'gplanted-4', date: '2026-11-09T10:00:00.000Z', players: 3, seed: '4', rules: {}, rules_code: 'std',
+    seats: [{ seat: 0, type: 'human', level: null }, { seat: 1, type: 'bot', level: 'easy' }, { seat: 2, type: 'bot', level: 'hard' }],
+    hand_scores: [[3, 2, -1], [1, 4, 0], [2, 2, 5]], totals: [6, 8, 4], ranking: [{ seat: 1, total: 8, mobs_home: 1, rank: 1 }],
+    winners: [1], shared: false, tiebreak_used: false, tied_on_total: false, winning_score: 8, margin: 2, hands: 3, tricks: 36,
+    mobs_home: 1, nobody_chased: 1, mobs_home_by_seat: [0, 1, 0], escapes: 2, chases: 2, falls: 1, chases_by_seat: [1, 1, 0], falls_by_seat: [1, 0, 0], seconds: 300,
+    hand_log: [{ end_reason: 'descent', outcome: 'home', choices: 'CWW', chasers: 1, outcomes: ['home', 'x', 'x'], mob_value: 3, scores: [3, 2, -1] },
+      { end_reason: 'descent', outcome: 'escaped-watcher', choices: 'CCW', chasers: 2, outcomes: ['fell', 'fell', 'x'], mob_value: 5, scores: [1, 4, 0] },
+      { end_reason: 'nobody-chases', outcome: 'nobody-chased', choices: 'WWW', chasers: 0, outcomes: ['x', 'x', 'x'], mob_value: 3, scores: [2, 2, 5] }],
+  };
+  // The ctx blocks the consent banner and Google; events are read back from dataLayer. The v4 record is planted before the page's own code runs.
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
+  await ctx.addInitScript((a) => { try { if (!localStorage.getItem(a.k)) localStorage.setItem(a.k, JSON.stringify({ v: 1, games: [a.rec] })); } catch { /* ignore */ } }, { k: STORE, rec: V4_RECORD });
+  await ctx.route(/cdn-cookieyes\.com|googletagmanager\.com|google-analytics\.com/, (r) => r.abort());
+  const page = await ctx.newPage();
+  page.setDefaultTimeout(20000);
+  page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !/Failed to load resource|fonts\.(googleapis|gstatic)\.com/.test(m.text())) problems.push(`[${current}] ${m.type()}: ${m.text()}`); });
+  page.on('pageerror', (e) => problems.push(`[${current}] pageerror: ${e.message}`));
   await open(page);
+  const planted = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)).games, STORE);
+  check('a v4 record is in the browser as the old game wrote it (rules_code "std", no rules_version); it is relabelled when read, and saved relabelled with the next game', planted.length === 1 && planted[0].id === 'gplanted-4' && planted[0].rules_code === 'std' && planted[0].rules_version === undefined, JSON.stringify(planted.map((g) => [g.id, g.rules_code, g.rules_version])));
   await page.click('.landing [data-action=open-stats]');
-  check('empty state first', /No games recorded yet/.test(await page.textContent('.dialog .st')));
+  await page.waitForSelector('.dialog .st');
+  const leadOnly = await page.textContent('.dialog .st__lead');
+  check('with only the v4 record the stats screen opens on it, labelled as the old rules, with the mob section and no NaN', /^\s*1\s+game played under Old rules/.test(leadOnly) && (await page.locator('.st h3', { hasText: 'The mob and the summit' }).count()) === 1 && !/NaN|undefined/.test(await page.textContent('.dialog .st')), leadOnly);
   await page.keyboard.press('Escape');
   for (let i = 0; i < 3; i++) {
     await configure(page, { players: 3 + (i % 2), types: ['easy', 'easy', 'medium', 'easy'] });
@@ -840,20 +955,40 @@ await scenario('Stats screen and exports', async () => {
   }
   await page.click('.end [data-action=open-stats]');
   await page.waitForSelector('.dialog .st');
-  check('three games listed', /^\s*3\s+games played/.test(await page.textContent('.dialog .st__lead')));
-  check('the mob and the summit section is there', /mob/i.test(await page.textContent('.dialog .st')));
+  const lead = await page.textContent('.dialog .st__lead');
+  check('three v5 games listed under the current rules, apart from the v4 record', /^\s*3\s+games played under Current rules/.test(lead), lead);
+  const opts = await page.$$eval('[data-action=stats-filter] option', (os) => os.map((o) => `${o.value}:${o.textContent.trim()}`));
+  check('the rules filter lists v5 (3 games) and v4 (1 game)', opts.length === 2 && opts[0].startsWith('std:Current rules (v5) (3)') && opts[1].startsWith('v4:Old rules') && opts[1].endsWith('(1)'), opts.join(' | '));
+  const sections = await page.$$eval('.st h3', (hs) => hs.map((h) => h.textContent));
+  check('the v5 screen has the Chase, Watch and Brumby row section and no mob section', sections.includes('Chase, Watch and the Brumby row') && !sections.includes('The mob and the summit') && !/NaN|undefined/.test(await page.textContent('.dialog .st')), sections.join(' | '));
   const stored = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)).games, STORE);
+  const v5 = stored.filter((g) => g.rules_version === 5);
+  check('the store holds the v4 record and three v5 records, each with an id and a seed', stored.length === 4 && v5.length === 3 && v5.every((g) => g.rules_code === 'std' && g.id && g.seed !== undefined) && stored.filter((g) => g.rules_code === 'v4').length === 1);
+  await shot(page, 'stats-1440');
   const [csvDl] = await Promise.all([page.waitForEvent('download'), page.click('[data-action=export-csv]')]);
   const csvText = fs.readFileSync(await csvDl.path(), 'utf8');
   const rows = csvText.trim().split('\n');
-  check('CSV: LF only, a row per game, every row the same field count', rows.length === 4 && !csvText.includes('\r') && rows.every((r) => r.split(',').length === rows[0].split(',').length));
+  check('CSV: LF only, a header and a row per game (v4 and v5 together), every row the same field count', rows.length === 5 && !csvText.includes('\r') && rows.every((r) => r.split(',').length === rows[0].split(',').length), String(rows.length));
+  check('CSV: the v4 row carries ",v4,4," and the v5 rows ",std,5,"', rows.filter((r) => r.includes(',v4,4,')).length === 1 && rows.filter((r) => r.includes(',std,5,')).length === 3);
   check('CSV: the file is named for the game and the date', /^snowy-river-stats-\d{4}-\d{2}-\d{2}\.csv$/.test(csvDl.suggestedFilename()), csvDl.suggestedFilename());
   const [jsonDl] = await Promise.all([page.waitForEvent('download'), page.click('[data-action=export-json]')]);
-  check('JSON equals the store', JSON.stringify(JSON.parse(fs.readFileSync(await jsonDl.path(), 'utf8')).games) === JSON.stringify(stored));
-  check('every stored game is under the standard rules and has an id and a seed', stored.every((g) => g.rules_code === 'std' && g.id && g.seed !== undefined));
-  await shot(page, 'stats-1440');
+  const exported = JSON.parse(fs.readFileSync(await jsonDl.path(), 'utf8'));
+  check('JSON equals the store, with the v4 record relabelled', JSON.stringify(exported.games) === JSON.stringify(stored) && exported.games.some((g) => g.id === 'gplanted-4' && g.rules_code === 'v4' && g.rules_version === 4));
+  await page.selectOption('[data-action=stats-filter]', 'v4');
+  await page.waitForSelector('.st h3:has-text("The mob and the summit")');
+  const lead4 = await page.textContent('.dialog .st__lead');
+  check('choosing the old rules shows the one v4 game with its own mob section, no NaN', /^\s*1\s+game played under Old rules/.test(lead4) && !/NaN|undefined/.test(await page.textContent('.dialog .st')), lead4);
+  await shot(page, 'stats-v4-1440');
   await page.keyboard.press('Escape');
-  await page.close();
+  // analytics, read back from dataLayer
+  const calls = await events(page);
+  const names = calls.map((c) => c[1]);
+  check('analytics: game_start x3, hand_end once per hand played (3 + 4 + 3), game_end x3, stats_viewed and stats_exported x2 fired', names.filter((x) => x === 'game_start').length === 3 && names.filter((x) => x === 'game_end').length === 3 && names.filter((x) => x === 'hand_end').length === v5.reduce((a, g) => a + g.hands, 0) && names.includes('stats_viewed') && names.filter((x) => x === 'stats_exported').length === 2, JSON.stringify(names.reduce((o, x) => ({ ...o, [x]: (o[x] || 0) + 1 }), {})));
+  check('analytics: every event name is known and every parameter is on the whitelist', names.every((x) => EVENT_NAMES.includes(x)) && calls.every((c) => Object.keys(c[2] || {}).every((k) => ALLOWED_PARAMS.includes(k))), [...new Set(calls.flatMap((c) => Object.keys(c[2] || {})))].join(','));
+  check('analytics: every value is a number or a short token, and nothing names a player', calls.every((c) => Object.values(c[2] || {}).every((v) => typeof v === 'number' || /^[A-Za-z0-9_,.+-]{1,60}$/.test(v))) && !/Player|You|bot 1/.test(JSON.stringify(calls)));
+  check('analytics: game_name is snowy-river on every event; no mob or escape parameters (v4 names) are sent', calls.every((c) => c[2] && c[2].game_name === 'snowy-river') && !/mobs_home|escapes/.test(JSON.stringify(calls)));
+  await ctx.close();
+  // 390 px: the same data on a phone
   const phone = await newPage(390, 844, { hasTouch: true, isMobile: true });
   await phone.addInitScript((a) => { try { localStorage.setItem(a.k, JSON.stringify({ v: 1, games: a.games })); } catch { /* ignore */ } }, { k: STORE, games: stored });
   await open(phone);
@@ -885,8 +1020,22 @@ await scenario('Bug reporter', async () => {
   await shot(page, 'bug-modal');
   const [dl1] = await Promise.all([page.waitForEvent('download'), page.click('#bug-form button[type=submit]')]);
   const rep = JSON.parse(fs.readFileSync(await dl1.path(), 'utf8'));
-  check('mid-game: the report holds the state and the action log', rep.game && rep.game.n === 3 && rep.actionLog.length >= 3);
+  check('mid-game: the report holds the v5 state (3 players, climb phase) and the action log', rep.game && rep.game.n === 3 && rep.game.phase === 'climb' && rep.game.rulesCode === 'std' && rep.actionLog.length >= 3);
   await page.keyboard.press('Escape');
+  // at the summit: the report is still a valid snapshot (a single human sees the full state: it is their own bug report)
+  const st = newStats();
+  page.__noDecide = true;
+  const until = Date.now() + 90000;
+  while (Date.now() < until && !(await page.locator('.overlay--summit').count())) await humanStep(page, st);
+  page.__noDecide = false;
+  await page.keyboard.press('Control+Shift+B');
+  const formAtSummit = await page.waitForSelector('#bug-form', { timeout: 3000 }).then(() => true, () => false);
+  if (formAtSummit) {
+    const [dlS] = await Promise.all([page.waitForEvent('download'), page.click('#bug-form button[type=submit]')]);
+    const repS = JSON.parse(fs.readFileSync(await dlS.path(), 'utf8'));
+    check('at the summit: the report downloads and says the game is at the summit', repS.game && repS.game.phase === 'summit' && Array.isArray(repS.game.row) && repS.game.row.length === 6);
+    await page.keyboard.press('Escape');
+  } else check('at the summit: the bug reporter opens over the summit modal', false);
   await playHuman(page);
   await page.keyboard.press('Control+Shift+B');
   await page.waitForSelector('#bug-form');
@@ -908,27 +1057,34 @@ await scenario('Bug reporter', async () => {
   }
 });
 
-await scenario('Rules dialog and rule book link', async () => {
+await scenario('Rules dialog (no rule book link)', async () => {
   for (const w of WIDTHS) {
     const page = await newPage(w, 800, phoneOpts(w));
     await open(page);
     await page.click('.landing [data-action=open-rules]');
-    check(`${w}px: the dialog opens, has steps and a rule book link, and fits`, (await page.locator('.dialog .how__steps > li').count()) >= 5 && (await page.locator('.dialog a[data-action=rulebook]').count()) === 1 && (await overflow(page)) <= 0);
+    check(`${w}px: the dialog opens with the eight steps, has no link of any kind, and fits`, (await page.locator('.dialog .how__steps > li').count()) === 8 && (await page.locator('.dialog a').count()) === 0 && (await page.locator('.dialog a[data-action=rulebook]').count()) === 0 && (await overflow(page)) <= 0);
+    check(`${w}px: the dialog teaches Chase, Watch, the turn of the hand and the 2/3 Chase cost`, /Chase/.test(await page.textContent('.dialog')) && /turns their whole hand round/.test(await page.textContent('.dialog')) && /pay 2 \(3 with two players\)|you pay 2/.test(await page.textContent('.dialog')) && !/rule book/i.test(await page.textContent('.dialog')));
     if (w === 390) await shot(page, 'rules-390');
     await dimCheck(page, `${w}px rules dialog`);
     const n = (await events(page)).filter((c) => c[1] === 'rules_opened').length;
     check(`${w}px: rules_opened was queued`, n === 1, `${n}`);
-    const href = await page.getAttribute('.dialog a[data-action=rulebook]', 'href');
-    check(`${w}px: the dialog's rule book link is the PDF and answers 200`, href === RULEBOOK_URL && (await page.request.get(BASE + href)).status() === 200);
     await page.close();
   }
+  // in a game the Rules button opens the same dialog
+  const g = await newPage();
+  await begin(g, { players: 3 });
+  await g.waitForSelector('.hand .card.is-legal');
+  await g.click('[data-action=open-rules]');
+  check('in a game: the Rules button opens the dialog, again without a link', (await g.locator('.dialog .how__steps > li').count()) === 8 && (await g.locator('.dialog a').count()) === 0);
+  await g.keyboard.press('Escape');
+  await g.close();
 });
 
-await scenario('Responsive sweep: 2, 4 and 5 players at every width', async () => {
+await scenario('Responsive sweep: 2, 3 and 4 players at every width', async () => {
   for (const w of WIDTHS) {
-    for (const n of [2, 4, 5]) {
+    for (const n of COUNTS) {
       const page = await newPage(w, 844, phoneOpts(w));
-      await begin(page, { players: n, types: ['human', 'medium', 'easy', 'easy', 'easy'] }, 'seed=9&botdelay=0');
+      await begin(page, { players: n, types: ['human', 'medium', 'easy', 'easy'] }, 'seed=9&botdelay=0');
       await page.waitForSelector('.hand .card.is-legal');
       const first = await page.$$eval('.hand .card', (cs) => cs.map((c) => c.getBoundingClientRect().width));
       check(`${w}px ${n}p: first screen fits and hand cards are at least 36 px wide`, (await overflow(page)) <= 0 && Math.min(...first) >= 36, `min ${Math.min(...first).toFixed(0)}`);
@@ -936,7 +1092,7 @@ await scenario('Responsive sweep: 2, 4 and 5 players at every width', async () =
       let sawSummary = false;
       for (let i = 0; i < 400 && !sawSummary; i++) { await humanStep(page, newStats()); if (await page.locator('#continue').count()) sawSummary = true; }
       if (sawSummary) {
-        check(`${w}px ${n}p: the reckoning fits`, (await overflow(page)) <= 0);
+        check(`${w}px ${n}p: the reckoning fits`, (await overflow(page)) <= 0 && (await page.locator('.reck__row').count()) === n);
         if (n === 4) await shot(page, `reckoning-${n}p-${w}`);
         await tryClick(page.locator('#continue'));
       }
@@ -958,6 +1114,15 @@ await scenario('Reduced motion', async () => {
   await begin(rm, { players: 3 }, 'seed=11&botdelay=800');
   await rm.waitForSelector('.hand .card.is-legal');
   check('with reduced motion the transitions and animations are off, the marker too', parseFloat(await rm.$eval('.card', (e) => getComputedStyle(e).transitionDuration)) === 0 && parseFloat(await rm.$eval('.mountain__marker', (e) => getComputedStyle(e).transitionDuration)) === 0 && (await rm.$eval('.seat', (e) => getComputedStyle(e).animationName)) === 'none');
+  // through the summit with reduced motion: the turned hand and the Mountain still change, with no animation left running
+  await watch(rm);
+  const st = newStats();
+  rm.__policy = 'watch';
+  const until = Date.now() + 120000;
+  while (Date.now() < until && !(await rm.locator('.phasebar--descent').count())) await humanStep(rm, st);
+  await rm.waitForTimeout(400);
+  const after = await rm.evaluate(() => ({ turned: document.querySelectorAll('.hand--turned').length, side: document.querySelector('.mountain').dataset.side, anims: document.getAnimations().filter((a) => a.playState === 'running' && a.effect && a.effect.getComputedTiming().iterations === Infinity).length }));
+  check('with reduced motion the hand is still turned and the Mountain still shows its descent side after the summit, with no endless animation', after.turned === 1 && after.side === 'descent' && after.anims === 0, JSON.stringify(after));
   await rm.close();
 });
 
@@ -988,7 +1153,7 @@ await scenario('Keyboard play', async () => {
   page.__noDecide = true;
   while (Date.now() < until && !(await page.locator('.overlay--summit').count())) await humanStep(page, st);
   page.__noDecide = false;
-  check('the summit modal takes focus', await page.evaluate(() => !!document.activeElement.closest('.overlay--summit')));
+  check('the summit modal takes focus', await page.evaluate(() => !!document.activeElement.closest('.overlay--summit')), await page.evaluate(() => `${document.activeElement.tagName}.${document.activeElement.className} overlays: ${[...document.querySelectorAll('.overlay')].map((o) => o.className).join(',')}`));
   for (let i = 0; i < 5; i++) await page.keyboard.press('Tab');
   check('Tab cycles inside the summit modal', await page.evaluate(() => !!document.activeElement.closest('.overlay--summit')));
   await page.focus('.overlay--summit .decide--chase');
@@ -1019,16 +1184,61 @@ await scenario('Leaving a game', async () => {
   await page.close();
 });
 
+await scenario('Checklist: disabled controls explain themselves; AI turns are paced; the bug button survives re-renders', async () => {
+  // empty stats: the export and clear buttons are disabled and say why
+  const empty = await newPage();
+  await open(empty);
+  await empty.click('.landing [data-action=open-stats]');
+  await empty.waitForSelector('.dialog .st');
+  const dis = await empty.$$eval('.dialog button:disabled', (bs) => bs.map((b) => [b.textContent.trim(), b.title]));
+  check('empty stats: Export CSV, Export JSON and Clear are disabled, each with a reason in its tooltip', dis.length === 3 && dis.every(([, t]) => /No games recorded yet/.test(t)), JSON.stringify(dis));
+  await empty.close();
+  // the setup page has no disabled control without a reason
+  const land = await newPage();
+  await open(land);
+  check('setup page: nothing is disabled without a reason (every bot level is available)', (await land.locator('button:disabled, option:disabled, input:disabled, select:disabled').count()) === 0);
+  await land.close();
+  // in a game with paced bots: waiting cards say so, dimmed cards give the reason, and the bug button stays through the re-renders
+  const page = await newPage();
+  await begin(page, { players: 4, types: ['easy', 'easy', 'human', 'easy'] }, 'seed=12&botdelay=250');
+  await page.waitForSelector('.hand .card', { timeout: 20000 });
+  const wait = await page.$$eval('.hand .card.is-wait', (cs) => cs.map((c) => c.title));
+  check('not your turn: every card is marked as waiting and its tooltip says to wait', wait.length > 0 && wait.every((t) => /wait for your turn/.test(t)), JSON.stringify(wait.slice(0, 2)));
+  await page.waitForSelector('.hand .card.is-legal', { timeout: 30000 });
+  // play one card, then time the bots' replies: with a 250 ms delay they must arrive one by one, not all at once
+  await page.evaluate(() => { window.__t = []; const t0 = performance.now(); new MutationObserver(() => window.__t.push(Math.round(performance.now() - t0))).observe(document.getElementById('app'), { childList: true, subtree: true }); });
+  await tryClick(page.locator('.hand .card.is-legal').first());
+  if (page.__touch) await tryClick(page.locator('.hand .card.is-selected'), { timeout: 1500 });
+  await page.waitForFunction(() => !document.querySelector('.hand .card.is-legal'), null, { timeout: 5000 }).catch(() => {});
+  await page.waitForSelector('.hand .card.is-legal, #continue, .overlay', { timeout: 30000 });
+  const times = await page.evaluate(() => window.__t);
+  const bursts = times.reduce((n, t, i) => n + (i === 0 || t - times[i - 1] > 80 ? 1 : 0), 0);
+  check('AI turns are visibly paced: the replies of the bots came as separate redraws spread over time (not all at once)', bursts >= 3 && times[times.length - 1] >= 500, `${bursts} bursts, last redraw at ${times[times.length - 1]} ms`);
+  await page.waitForSelector('.hand .card.is-legal', { timeout: 30000 });
+  const blocked = await page.$$eval('.hand .card.is-blocked', (cs) => cs.map((c) => c.title));
+  check('your turn: every dimmed card has a reason in its tooltip', blocked.every((t) => t.length > 10 && /must follow/i.test(t)), JSON.stringify(blocked.slice(0, 2)));
+  const disabledNoTitle = await page.$$eval('button:disabled, [aria-disabled=true]', (els) => els.filter((e) => !(e.title || e.getAttribute('aria-label'))).length);
+  check('in a game: every disabled or dimmed control has a tooltip or label', disabledNoTitle === 0, `${disabledNoTitle}`);
+  const st = newStats();
+  let bugGone = 0;
+  for (let i = 0; i < 80; i++) { await humanStep(page, st); if (!(await page.isVisible('#bug-button'))) bugGone++; }
+  check('the bug button stays on screen through 80 re-rendering steps of play (and the summit)', bugGone === 0, `${bugGone}`);
+  await page.close();
+});
+
 // ============================================================================================
 await scenario('Console and server log', async () => {
   check('no console errors or warnings, no failed requests, no HTTP 4xx across the whole run', problems.length === 0, problems.slice(0, 4).join(' || '));
   const missing = requestLog.filter((r) => r.status === 404 && r.url !== '/');
   check('the server log has no 404 (the origin root aside)', missing.length === 0, missing.slice(0, 3).map((r) => r.url).join(' '));
-});
+  check('no console.log / info / debug output anywhere in the run (no debug logs in the render path)', debugLogs.length === 0, debugLogs.slice(0, 3).join(' || '));
+  check('nothing requested the old rule book PDF or any rules/ file', !requestLog.some((r) => /\/rules\//.test(r.url)), requestLog.filter((r) => /\/rules\//.test(r.url)).map((r) => r.url).join(' '));
+}, { always: true });
 
 await browser.close();
 server.close();
 const failed = results.filter((r) => !r.pass);
-fs.writeFileSync(path.join(TMP, 'qa-results.json'), `${JSON.stringify({ total: results.length, failed: failed.length, targets: Object.fromEntries(Object.entries(TARGETS).map(([k, t]) => [k, t && { seed: t.seed, players: t.players, policy: t.policy || null, hand: t.handIdx === undefined ? null : t.handIdx + 1 }])), results }, null, 1)}\n`);
+const out = path.join(TMP, ONLY ? `qa-results-${slug(ONLY)}.json` : 'qa-results.json');
+fs.writeFileSync(out, `${JSON.stringify({ total: results.length, failed: failed.length, only: ONLY || null, targets: Object.fromEntries(Object.entries(TARGETS).map(([k, t]) => [k, t && { seed: t.seed, players: t.players, policy: t.policy || null, hand: t.handIdx === undefined ? null : t.handIdx + 1 }])), shots: fs.readdirSync(SHOTS), results }, null, 1)}\n`);
 console.log(`\nqa-run: ${results.length - failed.length} passed, ${failed.length} failed. Screenshots: ${SHOTS}`);
 if (failed.length) { for (const f of failed) console.log(`  FAIL [${f.scenario}] ${f.name}${f.detail ? ` -- ${f.detail}` : ''}`); process.exit(1); }

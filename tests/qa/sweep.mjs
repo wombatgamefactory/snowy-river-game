@@ -8,7 +8,7 @@
 //   - email addresses in text files (GitHub no-reply addresses are allowed)
 //   - names of internal documents, and working-process language (task numbers, hand-over notes, ...)
 //   - API keys and tokens
-//   - any file over 500 KB, except a PDF under rules/ (the printed rule book)
+//   - any file over 500 KB, except a PDF under rules/ (the old printed rule book, kept in the repo but not linked from the game)
 //   - file names with spaces or upper-case letters, and folders that must never be tracked
 //   - absolute or Windows paths inside assets/manifest.json
 //   - CRLF line endings in the git index (the repo is LF; .gitattributes sets eol=lf)
@@ -33,7 +33,7 @@ const ROOT = path.resolve(rootArg ? rootArg.slice(7) : path.join(HERE, '..', '..
 const STRICT = process.argv.includes('--strict');
 
 const MAX_BYTES = 500 * 1024;
-const SIZE_ALLOW = /^rules\/[a-z0-9-]+\.pdf$/; // the printed rule book, allowed on purpose
+const SIZE_ALLOW = /^rules\/[a-z0-9-]+\.pdf$/; // the old printed rule book (not linked from the game), allowed on purpose
 const EMAIL_ALLOW = ['info@wombatgamefactory.com']; // the public contact address, exact match only; any other email still fails
 const SLICE = 4000; // longest stretch of one line that a pattern is run over at a time
 const w = (...parts) => parts.join(''); // keeps a pattern from matching its own source line
