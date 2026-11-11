@@ -1,29 +1,29 @@
-// sim-check.mjs - the simulator is deterministic and its records are consistent (a few seconds).
-// Same seed twice gives identical JSON (also across worker threads); every game plays n hands and the
-// records agree with the engine's own totals and winners; bad arguments are refused; --const is
-// restored after a run; the per-hand records agree with the rules (outcomes, scores, dealt strength, Brumby stack,
-// fixed clock); the Python simulator's reference numbers (the all-smart-bot table) as wide range checks; the report and
-// the cross-check run.
+// sim-check.mjs - the v5 simulator is deterministic and its records are consistent (a few seconds).
+// Same seed twice gives identical JSON (also across worker threads); every game plays the right number of hands and the
+// records agree with the engine's own totals, winners and the v5 scoring rule; the d-recording Medium wrapper plays exactly
+// like the registry Medium; bad arguments (including 5 players and variants) are refused; --const is restored; and the Python
+// simulator's all-Medium numbers (sim/out-v5-base.txt, copied below for 2 to 4 players) hold as wide z checks.
 // Semantics: PERMANENTLY GREEN. Exit 1 on any failure.
 
 import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs, runSim, runSimThreaded } from './sim.mjs';
-import { report, crossCheck, winnersOf } from './sim-report.mjs';
-import { CONSTANTS } from '../src/engine/index.js';
+import { report, parsePython, crossCheckRows, measures } from './sim-report.mjs';
+import { playGame } from './bots-lib.mjs';
+import { CONSTANTS, deriveSeed } from '../src/engine/index.js';
 import { suite } from './lib.mjs';
 
 const { check, done } = suite('sim-check');
 const run = (argv) => runSim(parseArgs(argv));
-const mean = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
+const HANDS = { 2: 3, 3: 3, 4: 4 };
 
 // ---- determinism, termination, consistency ----
 for (const argv of [
   ['--players=2', '--seats=easy', '--games=60', '--seed=7'],
-  ['--players=3', '--seats=medium,high,easy', '--games=60', '--seed=7', '--jitter=10'],
-  ['--players=4', '--seats=medium,high,low,easy', '--games=60', '--seed=9'],
-  ['--players=5', '--seats=medium', '--games=40', '--seed=3'],
+  ['--players=3', '--seats=medium,high,easy', '--games=40', '--seed=7', '--jitter=10'],
+  ['--players=4', '--seats=medium,naive,low,easy', '--games=40', '--seed=9'],
+  ['--players=4', '--seats=medium,always,never,nothing', '--games=30', '--seed=3'],
   ['--players=3', '--seats=hard:2,medium,easy', '--games=6', '--seed=4'],
 ]) {
   const a = JSON.stringify(run(argv));
@@ -32,13 +32,22 @@ for (const argv of [
   check(`same seed, same JSON (${tag})`, a === b);
   const games = JSON.parse(a);
   const n = parseArgs(argv).players;
-  check(`${tag}: hands per game 3, 3, 4, 5`, games.every((g) => g.h.length === { 2: 3, 3: 3, 4: 4, 5: 5 }[n]));
-  check(`${tag}: hand scores add up to the totals`, games.every((g) => g.tot.every((t, s) => g.h.reduce((x, h) => x + h.s[s], 0) === t)));
-  check(`${tag}: climb tricks add up to the summit trick`, games.every((g) => g.h.every((h) => h.ct.reduce((x, y) => x + y, 0) === h.k)));
-  check(`${tag}: the winners are the top total, then mobs brought home, and the report agrees`, games.every((g) => {
-    const w = winnersOf(g);
-    return JSON.stringify(w.withTb) === JSON.stringify(g.win) && JSON.stringify(w.tied) === JSON.stringify(g.tied) && g.tb === (g.win.length < g.tied.length);
+  check(`${tag}: ${HANDS[n]} hands per game`, games.every((g) => g.h.length === HANDS[n]));
+  check(`${tag}: hand scores add up to the totals and the winners are the top total (then the last hand)`, games.every((g) => {
+    const top = Math.max(...g.tot);
+    const tied = g.tot.map((t, s) => (t === top ? s : -1)).filter((s) => s >= 0);
+    const lastBest = Math.max(...tied.map((s) => g.h[g.h.length - 1].s[s]));
+    const win = tied.filter((s) => g.h[g.h.length - 1].s[s] === lastBest);
+    return g.tot.every((t, s) => g.h.reduce((x, h) => x + h.s[s], 0) === t)
+      && JSON.stringify(win) === JSON.stringify(g.win) && JSON.stringify(tied) === JSON.stringify(g.tied) && g.tb === (g.win.length < g.tied.length);
   }));
+  check(`${tag}: v5 scoring: tricks + kept Brumby values - chase cost; watchers keep no Brumby and pay nothing`, games.every((g) => g.h.every((h) => h.s.every((sc, s) => (
+    sc === h.ct[s] + h.dt[s] + h.kv[s] - h.cc[s] && (h.c[s] === 'C' || (h.kv[s] === 0 && h.cc[s] === 0)))))));
+  check(`${tag}: 6 climb and 6 descent tricks, rows of 6, strong counts and deals recorded`, games.every((g) => g.h.every((h) => (
+    h.ct.reduce((x, y) => x + y, 0) === 6 && h.dt.reduce((x, y) => x + y, 0) === 6 && h.cs.length === 6 && h.ds.length === 6 && h.rv.length === 6
+    && h.st.length === n && h.tr.length === n && h.ex.length === n && h.ld >= 0 && h.ld <= 12))));
+  check(`${tag}: the Colt is +4, in the row when ck > 0, and kept only if its winner chased`, games.every((g) => g.h.every((h) => (
+    (h.ck > 0) === h.rv.includes(4) && (h.ck === 0 || h.rv[h.ck - 1] === 4) && (h.ck === 0 ? h.cw === -1 : h.cke === (h.c[h.cw] === 'C' ? 1 : 0))))));
 }
 check('different seeds differ', JSON.stringify(run(['--games=30', '--seed=1', '--seats=easy'])) !== JSON.stringify(run(['--games=30', '--seed=2', '--seats=easy'])));
 {
@@ -53,89 +62,73 @@ check('different seeds differ', JSON.stringify(run(['--games=30', '--seed=1', '-
 }
 {
   const before = JSON.stringify(CONSTANTS);
-  const a = parseArgs(['--players=4', '--seats=medium', '--games=20', '--seed=1', '--const.MOB_BASE=4']);
-  const g = run(['--players=4', '--seats=medium', '--games=20', '--seed=1', '--const.MOB_BASE=4']);
-  check('--const changes the rules for the run (a mob of 4 + 2 per Brumby card)', a.consts.MOB_BASE === 4 && g.every((x) => x.h.every((h) => (h.m - 4) % 2 === 0 && (h.home < 0 || h.s[h.home] === h.ct[h.home] + h.m))) && g.some((x) => x.h[0].m === 4));
+  const argv = ['--players=3', '--seats=medium', '--games=20', '--seed=1', '--const.CHASE_COST_BY_COUNT={"2":1,"3":1,"4":1}'];
+  const g = run(argv);
+  check('--const changes the rules for the run (chase cost 1 at 3p)', g.every((x) => x.h.every((h) => h.cc.every((c, s) => c === (h.c[s] === 'C' ? 1 : 0)))) && g.some((x) => x.h.some((h) => h.c.includes('C'))));
   check('--const is restored after the run', JSON.stringify(CONSTANTS) === before);
 }
 
-// ---- the Snowy River record: outcomes, scores, dealt strength, the Brumby stack, the cap, the fixed clock ----
+// ---- the d-recording wrapper plays exactly like the registry bots ----
+for (const [id, n] of [['medium', 3], ['naive', 4], ['medium', 2]]) {
+  const sim = run([`--players=${n}`, `--seats=${id}`, '--games=3', '--seed=11']);
+  const same = sim.every((g, i) => JSON.stringify(playGame({ levels: Array(n).fill(id), seed: deriveSeed(11, 'game', i), checkView: false }).state.result.totals) === JSON.stringify(g.tot));
+  check(`${id} at ${n}p: the recording wrapper gives the registry bot's totals`, same);
+  check(`${id} at ${n}p: the summit gains are recorded`, sim.every((g) => g.h.every((h) => h.d && h.d.every((x) => typeof x === 'number'))));
+}
 {
-  const games = run(['--players=4', '--seats=medium,naive,always,never', '--games=80', '--seed=11']);
-  const hands = games.flatMap((g) => g.h);
-  check('outcomes: watchers keep their climb tricks, the home seat adds the mob, a fallen chaser scores -1', hands.every((h) => h.s.every((sc, s) => (
-    h.o[s] === 'W' ? sc === h.ct[s] : h.o[s] === 'H' ? sc === h.ct[s] + h.m : sc === -1))));
-  check('choices and outcomes agree: only chasers home or fell; one home seat or none', hands.every((h) => [...h.o].every((x, s) => (x === 'W') === (h.c[s] === 'W')) && (h.o.match(/H/g) || []).length === (h.home >= 0 ? 1 : 0)));
-  check('nobody chasing means no descent: no heels seat, every outcome W', hands.every((h) => (h.c.includes('C') ? h.heels >= 0 : h.heels === -1 && h.home === -1 && h.dt.every((x) => x === 0))));
-  check('dealt strength: 11 cards of ranks 1..12 (21..122), extremity 8.5..60.5', hands.every((h) => h.ds.every((x) => x >= 21 && x <= 122) && h.de.every((x) => x >= 8.5 && x <= 60.5)));
-  check('the Brumby stack starts at 0, grows by 1 per escape and goes back to 0 after a mob comes home', games.every((g) => g.h.every((h, i) => {
-    if (i === 0) return h.b === 0;
-    const p = g.h[i - 1];
-    return h.b === (p.home >= 0 ? 0 : Math.min(4, p.b + 1)) && h.m === 3 + 2 * h.b;
-  })));
-  check('standard games never reach the 4-Brumby cap (at most 5 hands)', hands.every((h) => h.cap === 0 && h.b <= 4));
-  const fixed = run(['--players=4', '--seats=medium', '--games=30', '--seed=2', '--const.CLOCK=fixed']);
-  check('--const.CLOCK=fixed puts the summit after half the hand (5 of 11 at 4p)', fixed.every((g) => g.h.every((h) => h.k === 5)));
-  const blind = JSON.stringify(run(['--players=3', '--seats=medium-blind,naive-blind,medium', '--games=10', '--seed=3']));
-  check('the void-blind bots are deterministic too', blind === JSON.stringify(run(['--players=3', '--seats=medium-blind,naive-blind,medium', '--games=10', '--seed=3'])));
-  const arch = run(['--players=5', '--seats=always,never,random,nothing,naive-random', '--games=10', '--seed=3']);
-  check('the archetypes play: always chases every hand, never chases none', arch.every((g) => g.h.every((h) => {
-    const at = (id) => h.c[g.lv.indexOf(id)];
-    return at('always') === 'C' && at('never') === 'W';
-  })));
+  const easy = run(['--players=3', '--seats=easy', '--games=5', '--seed=1']);
+  check('bots that do not expose d record null', easy.every((g) => g.h.every((h) => h.d === null)));
+  const arch = run(['--players=4', '--seats=always,never,nothing,quick', '--games=12', '--seed=3']);
+  check('the archetypes play: always chases every hand, never chases none', arch.every((g) => g.h.every((h) => h.c[g.lv.indexOf('always')] === 'C' && h.c[g.lv.indexOf('never')] === 'W')));
 }
 
 // ---- refusals ----
 {
   let threw = 0;
-  const bad = [['--variant.NOPE=1'], ['--variant.TRUMP=red'], ['--seats=genius'], ['--players=6'], ['--players=1'], ['--players=4', '--seats=easy,easy'], ['--const.NOPE=1'], ['--bogus=1']];
+  const bad = [['--variant.NOPE=1'], ['--seats=genius'], ['--players=5'], ['--players=1'], ['--players=4', '--seats=easy,easy'], ['--const.NOPE=1'], ['--bogus=1'], ['--games=0'], ['--jitter=101']];
   for (const b of bad) {
     try { parseArgs(b); } catch { threw++; }
   }
-  check('bad variants, bots, counts, constants and options are refused', threw === bad.length, `${threw}/${bad.length}`);
+  check('bad variants, bots, counts (5 players included), constants and options are refused', threw === bad.length, `${threw}/${bad.length}`);
 }
 
-// ---- sanity numbers: the summit comes between trick 2 and trick 7 at 4 players ----
+// ---- the Python's all-Medium numbers (sim/out-v5-base.txt, locked rules) as z checks, and the report ----
+// 600 games per count against the Python's 1,000; |z| < 4 so a healthy build passes and a real rule difference does not.
+const PY = `== Snowy River v5 sim: base ==
+-- v5 locked: copy
+                                                             2p              3p              4p              5p
+   nobody chases                                            24%             12%             13%             14%
+   chase rate (all seats)                                   57%             49%             32%             26%
+   chase rate by descent cards 0-1/2/3/4+       9%/35%/54%/70%  6%/27%/45%/69%  5%/18%/32%/49%  3%/13%/24%/43%
+   hands with the Colt in the row                           50%             50%             50%             50%
+   top Home holder takes the Colt                           65%             66%             68%             68%
+   one player wins 5+ climb tricks                          17%              6%              5%              3%
+   tricks won by the player who led                         52%             42%             39%             31%
+   link: trumps dealt v hand score                        +0.30           +0.37           +0.39           +0.42
+   tied games (before tiebreak)                              5%              5%              8%              6%
+   winning margin (avg pts)                                 8.6             6.0             5.4             5.0
+-- end
+`;
 {
-  const games = run(['--players=4', '--seats=medium', '--games=200', '--seed=1']);
-  const hands = games.flatMap((g) => g.h);
-  const avg = mean(hands.map((h) => h.k));
-  check('4p medium: the summit trick is 2..7 and averages between 3 and 7', hands.every((h) => h.k >= 2 && h.k <= 7) && avg > 3 && avg < 7, avg.toFixed(2));
-}
-
-// ---- the Python's reference numbers (all-smart bots), as wide range checks ----
-// 250 games per count: the ranges are the table value +- about 4 sampling sd (the exact comparison is in the balance report).
-{
-  const share = (xs) => xs.filter(Boolean).length / xs.length;
-  const ranges = {
-    // n: [summit trick, nobody chases, mob home, ties]   (4%/9%/11%/11% ties are wide: 250 games)
-    2: { k: [5.9, 6.9], nobody: [0.04, 0.17], home: [0.68, 0.90] },
-    3: { k: [5.4, 6.4], nobody: [0.05, 0.18], home: [0.62, 0.84] },
-    4: { k: [4.8, 5.6], nobody: [0.05, 0.19], home: [0.58, 0.81] },
-    5: { k: [3.6, 4.5], nobody: [0.04, 0.19], home: [0.56, 0.80] },
-  };
-  for (const n of [2, 3, 4, 5]) {
-    const hands = run([`--players=${n}`, '--seats=medium-blind', '--games=250', '--seed=21']).flatMap((g) => g.h);
-    const r = ranges[n];
-    const k = mean(hands.map((h) => h.k)); const nobody = share(hands.map((h) => !h.c.includes('C'))); const home = share(hands.map((h) => h.home >= 0));
-    check(`${n}p reference: summit trick ${r.k[0]}-${r.k[1]} (Python ${[6.4, 5.9, 5.2, 4.0][n - 2]})`, k >= r.k[0] && k <= r.k[1], k.toFixed(2));
-    check(`${n}p reference: nobody chases ${r.nobody[0] * 100}-${r.nobody[1] * 100}% (Python ${[10, 11, 12, 11][n - 2]}%)`, nobody >= r.nobody[0] && nobody <= r.nobody[1], (nobody * 100).toFixed(1));
-    check(`${n}p reference: mob brought home ${r.home[0] * 100}-${r.home[1] * 100}% (Python ${[80, 73, 70, 69][n - 2]}%)`, home >= r.home[0] && home <= r.home[1], (home * 100).toFixed(1));
+  const py = parsePython(PY);
+  check('the Python table parser reads the labels and four columns', py.size === 10 && py.get('nobody chases')[4][0].v === 13 && py.get('chase rate by descent cards 0-1/2/3/4+')[3].length === 4 && py.get('link: trumps dealt v hand score')[3][0].v === 0.37);
+  for (const n of [2, 3, 4]) {
+    const games = run([`--players=${n}`, '--seats=medium', '--games=600', '--seed=21']);
+    const rows = crossCheckRows(games, py, 1000).filter((r) => !r.missing && !r.descriptive);
+    check(`${n}p all-Medium v the Python: ${rows.length} measures within |z| < 4`, rows.length >= 10 && rows.every((r) => Math.abs(r.z) < 4), rows.filter((r) => Math.abs(r.z) >= 4).map((r) => `${r.label} z=${r.z.toFixed(1)}`).join('; '));
   }
+  const m = measures(run(['--players=4', '--seats=medium', '--games=100', '--seed=2']));
+  const nobody = m.get('nobody chases').items[0]; const one = m.get('one chaser').items[0]; const two = m.get('two+ chasers').items[0];
+  check('nobody + one + two-plus chasers add to 100%', Math.abs(nobody.est + one.est + two.est - 100) < 1e-9);
 }
-
-// ---- the report and the cross-check ----
 {
   const dir = mkdtempSync(join(tmpdir(), 'sim-check-'));
   try {
     const f = join(dir, 'a.json');
-    const a = parseArgs(['--players=3', '--seats=medium,high,easy', '--games=40', '--seed=1']);
-    writeFileSync(f, JSON.stringify({ meta: { players: 3, seats: a.seats, rotate: true, jitter: 0, variants: {}, consts: {}, rules: a.rules }, games: runSim(a) }));
+    const a = parseArgs(['--players=3', '--seats=medium,naive,easy', '--games=40', '--seed=1']);
+    writeFileSync(f, JSON.stringify({ meta: { players: 3, seats: a.seats, rotate: true, jitter: 0, seed: 1, variants: {}, consts: {}, rules: a.rules }, games: runSim(a) }));
     const text = report([f]);
-    check('report prints the summary and the bot table', /tie for 1st/.test(text) && /Win % by bot/.test(text) && /still shared/.test(text));
-    check('report prints the Snowy River measures', /chasers per hand/.test(text) && /fewest-climb/.test(text) && /Brumby stack/.test(text) && /hand extremity/.test(text) && /cap binds/.test(text));
-    const x = crossCheck(f, f);
-    check('cross-check of a file against itself shows no difference', /within CI/.test(x) && !/DIFFERS/.test(x));
+    check('report prints the bot table, seats, ties and the hand measures', /Win % \(last-hand tiebreak\)/.test(text) && /Seat \(0 = first leader\)/.test(text) && /Ties on the top total/.test(text) && /top Home holder takes the Colt/.test(text) && /chase rate by descent cards/.test(text));
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 

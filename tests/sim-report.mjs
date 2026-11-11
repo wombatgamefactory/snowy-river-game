@@ -1,29 +1,30 @@
-// sim-report.mjs - summarises one or more sim.mjs JSON files (several = side-by-side columns).
+// sim-report.mjs - summarises sim.mjs JSON files (v5 rules). Output is plain text with pipe tables.
 //
-//   node tests/sim-report.mjs tests/tmp/a.json [tests/tmp/b.json ...] [--detail]
-//   node tests/sim-report.mjs tests/tmp/js.json --vs=path/to/reference.json     (cross-check, z-tests of differences)
-//   node tests/sim-report.mjs tests/tmp/js.json --bands                          (score by quartile of hand extremity / strength)
+//   node tests/sim-report.mjs tests/tmp/a.json [tests/tmp/b.json ...]            summary of each file
+//   node tests/sim-report.mjs tests/tmp/a.json --python=sim/out-v5-base.txt       + the cross-check against the Python table
+//   node tests/sim-report.mjs tests/tmp/a.json --wins=play                        + the Python win-share cross-check for a seat mix
+//       (--wins=play | play-random | policy2-always | policy2-never | policy3 | policy4)
 //
-// Per file: win rate by bot and by seat (Wilson 95% CI; a shared win counts 1/winners), score mean/sd,
-// margin 1st-2nd, tie and tiebreak rates, and Snowy River's own hand measures (below).
-// Definitions:
-//   "tie for 1st"  = two or more players on the top total BEFORE any tiebreak.
-//   "shared"       = still tied after the tiebreak (level on mobs brought home too).
-//   win % (tiebreak) is the game's rule: a tied total is split by mobs brought home (R11.6), then shared 1/winners.
-//   win % (no tiebreak) shares every tie on the top total (what the Python simulator, which has no tiebreak, counts).
-//   chasers per hand = seats that chose Chase; "nobody chased" = 0, "lone" = 1, "race" = 2 or more.
-//   mob home by the fewest-climb player: the seat that brought the mob home had the fewest climb tricks (ties count,
-//     as in the Python); "by a lone chaser": that hand had exactly one chaser. Both are shares of mobs brought home.
-//   climb points held: climb tricks (1 point each) of the seats that chased v the seats that watched, in the same hands.
-//   hand strength = sum of the ranks dealt to a seat; extremity = sum of |rank - 6.5|; the links are Pearson r
-//     between that and the seat's hand score, over every seat of every hand.
-//   Brumby stack = Brumby cards under the Colt at the deal; "cap binds" = an escape found all 4 already there.
-// Everything is recomputed from the totals (`tot`), the hands' scores (`h[].s`) and who brought the mob
-// home (`h[].home`), so a file made by a reference simulator in the same format works too (fields it lacks give n/a).
+// Per file: win rate by bot and by seat position (a shared win counts 1/winners; Wilson 95% interval), score mean
+// and sd, winning margin, tie rates, and the hand measures the Python simulator (sim/snowy-river-sim-v5.py) prints.
+//
+// Definitions (all the Python's, so the two compare like for like):
+//   chasers per hand      seats that chose Chase: nobody = 0, one = 1, two+ = 2 or more
+//   strong descent cards  at the summit, cards in hand that are Home cards or have a descent value of 10+ (0 and 1 share a bucket)
+//   close / obvious       |d| < 1 / |d| >= 3 where d = the Monte Carlo mean (chase - watch) gain a Medium-type bot computed
+//   top Home holder       the seat holding the highest descent Home card among the cards STILL IN HAND at the summit
+//                         (the Python's reading; not "among all cards dealt"). Colt measures use hands with the Colt in the row
+//                         and a Home card in some hand.
+//   trumps dealt          cards of the Escape and Home suits in the 12 dealt; extremes dealt = climb value 1-2 or 11-12
+//   tied before / after   two or more on the top total / still two or more after the last-hand tiebreak (shared)
+//   winning margin        best total minus second best (points)
+// Standard errors treat each hand (or game, for game measures) as one cluster, so seats of one hand are not counted as
+// independent. Correlations use the Fisher interval over seat-hands (slightly generous, as hands share a game).
 
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
+// ---------- statistics ----------
 export function wilson(k, n, z = 1.96) {
   if (n <= 0) return [0, 0];
   const p = k / n; const d = 1 + (z * z) / n;
@@ -36,242 +37,296 @@ export const ci = (k, n) => { if (!n) return 'n/a'; const [lo, hi] = wilson(k, n
 const sum = (xs) => xs.reduce((s, x) => s + x, 0);
 export const mean = (xs) => (xs.length ? sum(xs) / xs.length : NaN);
 export const sd = (xs) => { const m = mean(xs); return Math.sqrt(sum(xs.map((x) => (x - m) ** 2)) / Math.max(1, xs.length - 1)); };
-const mci = (xs) => (1.96 * sd(xs)) / Math.sqrt(xs.length);
-export const pm = (xs, d = 2) => (xs.length ? `${mean(xs).toFixed(d)} ±${mci(xs).toFixed(d)}` : 'n/a');
-/** Two-sample z of the difference of means of two arrays (0/1 arrays give a difference of proportions). */
-export function diffZ(xs, ys) {
-  const se = Math.sqrt(sd(xs) ** 2 / xs.length + sd(ys) ** 2 / ys.length);
-  return se === 0 ? 0 : (mean(xs) - mean(ys)) / se;
-}
-/** Pearson r of two equal-length arrays (NaN when there is no variance). */
+export const pm = (xs, d = 2) => (xs.length ? `${mean(xs).toFixed(d)} ±${((1.96 * sd(xs)) / Math.sqrt(xs.length)).toFixed(d)}` : 'n/a');
 export function pearson(xs, ys) {
   const mx = mean(xs); const my = mean(ys);
   let sxy = 0; let sxx = 0; let syy = 0;
   for (let i = 0; i < xs.length; i++) { const dx = xs[i] - mx; const dy = ys[i] - my; sxy += dx * dy; sxx += dx * dx; syy += dy * dy; }
   return sxx && syy ? sxy / Math.sqrt(sxx * syy) : NaN;
 }
-/** r with its Fisher 95% interval, as text. */
 export function rci(r, n) {
   if (!Number.isFinite(r) || n < 4) return 'n/a';
   const z = Math.atanh(r); const se = 1 / Math.sqrt(n - 3);
   const f = (x) => Math.tanh(x).toFixed(2);
   return `${r >= 0 ? '+' : ''}${r.toFixed(2)} [${f(z - 1.96 * se)}, ${f(z + 1.96 * se)}]`;
 }
-/** z of the difference of two correlations (Fisher). Pairs inside one hand are not independent, so this is slightly generous. */
-export function corrZ(r1, n1, r2, n2) {
-  return (Math.atanh(r1) - Math.atanh(r2)) / Math.sqrt(1 / (n1 - 3) + 1 / (n2 - 3));
+
+/** Ratio estimate with cluster-robust se: clusters = [{ y, m }] (y = numerator sum, m = denominator count). */
+export function ratio(clusters) {
+  const G = clusters.length;
+  const Y = sum(clusters.map((c) => c.y)); const M = sum(clusters.map((c) => c.m));
+  if (!M || G < 2) return { est: M ? Y / M : NaN, se: NaN, m: M };
+  const est = Y / M;
+  const v = sum(clusters.map((c) => (c.y - est * c.m) ** 2)) * (G / (G - 1)) / (M * M);
+  return { est, se: Math.sqrt(v), m: M };
+}
+/** Same, for a list of pre-built observations per cluster: obs = [[v, v, ...] per cluster] -> mean of all values. */
+const meanOf = (perCluster) => ratio(perCluster.map((vs) => ({ y: sum(vs), m: vs.length })));
+const propOf = (perCluster) => ratio(perCluster.map((vs) => ({ y: sum(vs.map(Number)), m: vs.length })));
+
+function longest(seq) {
+  let best = 0; let run = 0;
+  for (let i = 0; i < seq.length; i++) { run = i && seq[i - 1] === seq[i] ? run + 1 : 1; best = Math.max(best, run); }
+  return best;
+}
+const quantile = (xs, lo) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor(lo * s.length)]; };
+
+// ---------- the measures (Python's labels) ----------
+/**
+ * Hand and game measures in the Python's terms. Returns Map label -> { unit: 'pct'|'num', items: [{ name, est, se, n }] }.
+ * Percent measures are in percent (0-100). `se` is null for descriptive items that are not tested.
+ */
+export function measures(games) {
+  const n = games[0].n;
+  const H = games.flatMap((g) => g.h);
+  const out = new Map();
+  const add = (label, unit, items) => out.set(label, { unit, items });
+  const P = (name, est) => ({ name, est: est.est * 100, se: est.se * 100, n: est.m });
+  const N = (name, est) => ({ name, est: est.est, se: est.se, n: est.m });
+
+  // per hand: chasers
+  const chasers = H.map((h) => [...h.c].filter((x) => x === 'C').length);
+  add('nobody chases', 'pct', [P('', propOf(chasers.map((x) => [x === 0])))]);
+  add('one chaser', 'pct', [P('', propOf(chasers.map((x) => [x === 1])))]);
+  add('two+ chasers', 'pct', [P('', propOf(chasers.map((x) => [x >= 2])))]);
+
+  // per seat-hand clusters (one cluster per hand)
+  const seatObs = (f) => H.map((h) => [...h.c].map((_, s) => f(h, s)));
+  add('chase rate (all seats)', 'pct', [P('', propOf(seatObs((h, s) => h.c[s] === 'C')))]);
+  const bucketRate = (bucketOf, buckets) => buckets.map((b) => {
+    const cl = H.map((h) => {
+      const idx = [...h.c].map((_, s) => s).filter((s) => bucketOf(h, s) === b);
+      return { y: idx.filter((s) => h.c[s] === 'C').length, m: idx.length };
+    });
+    return P(String(b), ratio(cl));
+  });
+  add('chase rate by climb tricks 0/1/2/3+', 'pct', bucketRate((h, s) => Math.min(h.ct[s], 3), [0, 1, 2, 3]));
+  add('chase rate by descent cards 0-1/2/3/4+', 'pct', bucketRate((h, s) => Math.min(Math.max(h.st[s], 1), 4), [1, 2, 3, 4]));
+
+  // close calls: per hand, the d values the bots exposed
+  const dObs = H.map((h) => (h.d ? h.d.filter((x) => x !== null) : []));
+  if (dObs.some((x) => x.length)) {
+    add('close calls (|chase - watch| < 1 pt)', 'pct', [P('', propOf(dObs.map((v) => v.map((x) => Math.abs(x) < 1))))]);
+    add('obvious (|chase - watch| >= 3 pts)', 'pct', [P('', propOf(dObs.map((v) => v.map((x) => Math.abs(x) >= 3))))]);
+  }
+
+  // chasers v watchers
+  const chaserNet = H.map((h) => [...h.c].map((x, s) => (x === 'C' ? h.kv[s] - h.cc[s] : null)).filter((x) => x !== null));
+  add('chaser net from row (Brumbies - cost)', 'num', [N('', meanOf(chaserNet))]);
+  const scoreOf = (want) => H.map((h) => [...h.c].map((x, s) => (x === want ? h.s[s] : null)).filter((x) => x !== null));
+  add('hand score: chasers v watchers', 'num', [N('chasers', meanOf(scoreOf('C'))), N('watchers', meanOf(scoreOf('W')))]);
+
+  // the row and the Colt
+  add('hands with the Colt in the row', 'pct', [P('', propOf(H.map((h) => [h.ck > 0])))]);
+  const coltH = H.filter((h) => h.ck > 0);
+  add("Colt's trick (avg, 1-6)", 'num', [N('', meanOf(coltH.map((h) => [h.ck])))]);
+  const rowSums = H.map((h) => sum(h.rv));
+  add('row value (avg / spread low-high 10%)', 'num', [
+    N('mean', meanOf(rowSums.map((x) => [x]))),
+    { name: 'p10', est: quantile(rowSums, 0.1), se: null, n: rowSums.length },
+    { name: 'p90', est: quantile(rowSums, 0.9), se: null, n: rowSums.length },
+  ]);
+  add('Colt taken by a chaser', 'pct', [P('', propOf(coltH.map((h) => [h.cke === 1])))]);
+  const topH = coltH.filter((h) => h.top >= 0);
+  add('top Home holder chases', 'pct', [P('', propOf(topH.map((h) => [h.c[h.top] === 'C'])))]);
+  add("top Home holder wins the Colt's trick", 'pct', [P('', propOf(topH.map((h) => [h.cw === h.top])))]);
+  add('top Home holder takes the Colt', 'pct', [P('', propOf(topH.map((h) => [h.cw === h.top && h.c[h.top] === 'C'])))]);
+
+  // runs and who leads
+  add('longest run of wins in a hand (avg)', 'num', [N('', meanOf(H.map((h) => [longest(h.cs + h.ds)])))]);
+  add('a 5+ run on the climb (of 6)', 'pct', [P('', propOf(H.map((h) => [longest(h.cs) >= 5])))]);
+  add('a 5+ run on the descent (of 6)', 'pct', [P('', propOf(H.map((h) => [longest(h.ds) >= 5])))]);
+  add('one player wins 5+ climb tricks', 'pct', [P('', propOf(H.map((h) => [Math.max(...h.ct) >= 5])))]);
+  add('most climb tricks by one player (avg)', 'num', [N('', meanOf(H.map((h) => [Math.max(...h.ct)])))]);
+  add('tricks won by the player who led', 'pct', [P('', ratio(H.map((h) => ({ y: h.ld, m: 12 }))))]);
+
+  // luck links: Pearson r over every seat of every hand
+  const link = (key) => {
+    const xs = []; const ys = [];
+    for (const h of H) for (let s = 0; s < n; s++) { xs.push(h[key][s]); ys.push(h.s[s]); }
+    const r = pearson(xs, ys);
+    return { name: '', est: r, se: (1 - r * r) / Math.sqrt(xs.length - 3), n: xs.length };
+  };
+  add('link: trumps dealt v hand score', 'num', [link('tr')]);
+  add('link: extremes dealt v hand score', 'num', [link('ex')]);
+
+  // game measures
+  add('tied games (before tiebreak)', 'pct', [P('', propOf(games.map((g) => [g.tied.length > 1])))]);
+  add('tied games (after last-hand tiebreak)', 'pct', [P('', propOf(games.map((g) => [g.win.length > 1])))]);
+  add('winning margin (avg pts)', 'num', [N('', meanOf(games.map((g) => { const t = [...g.tot].sort((a, b) => b - a); return [t[0] - t[1]]; })))]);
+  return out;
 }
 
-// ---------- tiebreak: recomputed from the totals and the mobs brought home ----------
-/** Winners of one game under the standard tiebreak (mobs brought home, R11.6) and with none. */
-export function winnersOf(g) {
-  const top = Math.max(...g.tot);
-  const tied = g.tot.map((t, s) => (t === top ? s : -1)).filter((s) => s >= 0);
-  const homes = g.tot.map((_, s) => g.h.filter((h) => h.home === s).length);
-  const most = Math.max(...tied.map((s) => homes[s]));
-  return { tied, noTb: tied, withTb: tied.filter((s) => homes[s] === most) };
+// ---------- the Python's printed table ----------
+/** Parses one block of a sim/out-v5-*.txt file (the block whose header line starts with `header`): label -> { 2: [..], 3: [..], 4: [..] } with the decimals each token had. */
+export function parsePython(text, header = '-- v5 locked') {
+  const lines = text.split(/\r?\n/);
+  const start = lines.findIndex((l) => l.startsWith(header));
+  if (start < 0) throw new Error(`Python block "${header}" not found`);
+  const table = new Map();
+  for (let i = start + 2; i < lines.length && !lines[i].startsWith('--'); i++) {
+    const m = /^\s*(.+?)\s{2,}(.*)$/.exec(lines[i]);
+    if (!m) continue;
+    const toks = m[2].match(/[-+]?\d+(?:\.\d+)?%?/g) || [];
+    if (toks.length % 4 !== 0 || !toks.length) continue; // 4 columns (2p..5p)
+    const k = toks.length / 4;
+    const col = (c) => toks.slice(c * k, (c + 1) * k).map((t) => ({ v: Number.parseFloat(t), half: t.endsWith('%') ? 0.5 : 0.5 * 10 ** -((t.split('.')[1] || '').replace('%', '').length) }));
+    table.set(m[1].trim(), { 2: col(0), 3: col(1), 4: col(2), 5: col(3) });
+  }
+  return table;
+}
+
+/**
+ * Cross-check: JS measures against the Python's printed numbers. The Python's own sampling error is taken as the JS
+ * error scaled to its game count (`pyGames`, default 1,000), its rounding as uniform. |z| < 1.96 = "within CI".
+ */
+export function crossCheckRows(games, pyTable, pyGames = 1000) {
+  const n = games[0].n;
+  const mine = measures(games);
+  const rows = [];
+  for (const [label, m] of mine) {
+    const ref = pyTable.get(label);
+    if (!ref || !ref[n]) { rows.push({ label, n, missing: true }); continue; }
+    m.items.forEach((it, i) => {
+      const py = ref[n][i];
+      if (!py) return;
+      const name = it.name ? `${label} [${it.name}]` : label;
+      if (it.se === null || !Number.isFinite(it.se)) { rows.push({ label: name, js: it.est, py: py.v, z: null, descriptive: true, unit: m.unit }); return; }
+      const sePy = it.se * Math.sqrt(games.length / pyGames);
+      const rnd = py.half / Math.sqrt(3);
+      const se = Math.sqrt(it.se ** 2 + sePy ** 2 + rnd ** 2);
+      const z = (it.est - py.v) / se;
+      rows.push({ label: name, js: it.est, jsSe: it.se, py: py.v, z, unit: m.unit, ok: Math.abs(z) < 1.96 });
+    });
+  }
+  return rows;
+}
+
+const f2 = (x, unit) => (unit === 'pct' ? `${x.toFixed(1)}%` : x.toFixed(2));
+export function crossCheckText(games, pyTable, pyGames = 1000) {
+  const rows = crossCheckRows(games, pyTable, pyGames);
+  const out = [`Cross-check against the Python table, ${games[0].n} players, ${games.length} JS games v ${pyGames} Python games`, '', '| Measure | JS (95% CI) | Python | z | Verdict |', '|---|---|---|---|---|'];
+  for (const r of rows) {
+    if (r.missing) { out.push(`| ${r.label} | n/a | not in the Python table | | not compared |`); continue; }
+    if (r.descriptive) { out.push(`| ${r.label} | ${f2(r.js, r.unit)} | ${f2(r.py, r.unit)} | | descriptive |`); continue; }
+    const ci95 = 1.96 * r.jsSe;
+    out.push(`| ${r.label} | ${f2(r.js, r.unit)} ±${r.unit === 'pct' ? ci95.toFixed(1) : ci95.toFixed(2)} | ${f2(r.py, r.unit)} | ${r.z >= 0 ? '+' : ''}${r.z.toFixed(1)} | ${r.ok ? 'within CI' : 'DIFFERS'} |`);
+  }
+  const tested = rows.filter((r) => r.z !== null && r.z !== undefined && !r.missing && !r.descriptive);
+  out.push('', `${tested.filter((r) => r.ok).length} of ${tested.length} compared items within CI (about 5% would miss by chance alone).`);
+  return out.join('\n');
+}
+
+// ---------- win rates ----------
+/** Per bot id: seat appearances, credit (shared win = 1/winners), per-game clusters for the CI. */
+export function winsByBot(games) {
+  const by = new Map();
+  games.forEach((g, gi) => {
+    g.lv.forEach((id, s) => {
+      const e = by.get(id) || { seats: 0, credit: 0, clusters: new Map() };
+      const c = g.win.includes(s) ? 1 / g.win.length : 0;
+      e.seats++; e.credit += c;
+      const cl = e.clusters.get(gi) || { y: 0, m: 0 };
+      cl.y += c; cl.m += 1; e.clusters.set(gi, cl);
+      by.set(id, e);
+    });
+  });
+  const res = new Map();
+  for (const [id, e] of by) {
+    const r = ratio([...e.clusters.values()]);
+    res.set(id, { id, seats: e.seats, share: e.credit / e.seats, se: r.se, credit: e.credit, games: e.clusters.size });
+  }
+  return res;
+}
+const shareText = (x, se) => `${pct(x)} ±${pct(1.96 * se)}`;
+
+/** Win share by bot id, no tiebreak (ties on the top total shared) and with the tiebreak. */
+function winTable(games) {
+  const n = games[0].n;
+  const withTb = winsByBot(games);
+  const noTb = winsByBot(games.map((g) => ({ ...g, win: g.tied })));
+  const lines = ['| Bot | Seats | Win % (last-hand tiebreak) | Win % (ties shared) | Fair share |', '|---|---|---|---|---|'];
+  for (const [id, e] of withTb) lines.push(`| ${id} | ${e.seats} | ${shareText(e.share, e.se)} | ${shareText(noTb.get(id).share, noTb.get(id).se)} | ${pct(1 / n)} |`);
+  return lines.join('\n');
+}
+
+/** Win share by seat position, 0 = the first leader (left of the first dealer). */
+function seatTable(games) {
+  const n = games[0].n;
+  const credit = Array(n).fill(0);
+  for (const g of games) for (const w of g.win) credit[(w - g.fd - 1 + 2 * n) % n] += 1 / g.win.length;
+  const lines = ['| Seat (0 = first leader) | Win % |', '|---|---|'];
+  credit.forEach((c, p) => lines.push(`| ${p} | ${ci(c, games.length)} |`));
+  return lines.join('\n');
+}
+
+/** Python win shares by seat mix, from sim/out-v5-policy.txt and out-v5-play.txt (800 games per line). */
+export const PY_WINS = {
+  play: { seats: (n) => ['medium', ...Array(n - 1).fill('naive')], py: { 2: { medium: 55, naive: 45 }, 3: { medium: 57, naive: 22 }, 4: { medium: 66, naive: 11 } } },
+  'play-random': { seats: (n) => ['medium', ...Array(n - 1).fill('naive-random')], py: { 2: { medium: 58, 'naive-random': 42 }, 3: { medium: 61, 'naive-random': 20 }, 4: { medium: 75, 'naive-random': 8 } } },
+  'policy2-always': { seats: () => ['medium', 'always'], py: { 2: { medium: 60, always: 40 } } },
+  'policy2-never': { seats: () => ['medium', 'never'], py: { 2: { medium: 62, never: 38 } } },
+  policy3: { seats: () => ['medium', 'always', 'never'], py: { 3: { medium: 48, always: 30, never: 23 } } },
+  policy4: { seats: () => ['medium', 'always', 'never', 'nothing'], py: { 4: { medium: 37, always: 23, never: 20, nothing: 20 } } },
+};
+export function winsCrossCheckText(games, mix, pyGames = 800) {
+  const n = games[0].n;
+  const ref = PY_WINS[mix];
+  if (!ref || !ref.py[n]) return `No Python win-share line for "${mix}" at ${n} players`;
+  const mine = winsByBot(games);
+  const lines = [`Win-share cross-check, ${mix}, ${n} players (${games.length} JS games v ${pyGames} Python games)`, '', '| Bot | JS win % (95% CI) | Python | z | Verdict |', '|---|---|---|---|---|'];
+  for (const [id, py] of Object.entries(ref.py[n])) {
+    const e = mine.get(id);
+    const se = Math.sqrt(e.se ** 2 + (e.se * Math.sqrt(games.length / pyGames)) ** 2 + (0.5 / 100 / Math.sqrt(3)) ** 2);
+    const z = (e.share - py / 100) / se;
+    lines.push(`| ${id} | ${shareText(e.share, e.se)} | ${py} | ${z >= 0 ? '+' : ''}${z.toFixed(1)} | ${Math.abs(z) < 1.96 ? 'within CI' : 'DIFFERS'} |`);
+  }
+  return lines.join('\n');
 }
 
 // ---------- summary ----------
-export function summarise(data) {
-  const gs = data.games; const N = gs.length;
-  const n = data.meta.players;
-  const W = gs.map(winnersOf);
-  const credit = (list, s) => (list.includes(s) ? 1 / list.length : 0);
-  const levels = [...new Set(gs.flatMap((g) => g.lv))].sort();
-
-  const bySeat = Array.from({ length: n }, (_, s) => ({ seat: s, k: sum(gs.map((g, i) => credit(W[i].withTb, s))), n: N }));
-  const byOffset = Array.from({ length: n }, (_, o) => ({ off: o, k: sum(gs.map((g, i) => credit(W[i].withTb, (g.fd + o) % n))), n: N }));
-  const byLevel = levels.map((lv) => {
-    const cred = []; const cred0 = []; const scores = []; const perHand = [];
-    gs.forEach((g, i) => {
-      for (let s = 0; s < n; s++) {
-        if (g.lv[s] !== lv) continue;
-        cred.push(credit(W[i].withTb, s)); cred0.push(credit(W[i].noTb, s)); scores.push(g.tot[s]);
-        for (const h of g.h) perHand.push(h.s[s]);
-      }
-    });
-    return { lv, cred, cred0, k: sum(cred), k0: sum(cred0), n: cred.length, base: 1 / n, mean: mean(scores), perHand: mean(perHand), sdTotal: sd(scores) };
-  });
-  const exp = N / n;
-  const chi = sum(bySeat.map((b) => ((b.k - exp) ** 2) / exp));
-
-  const hands = gs.flatMap((g) => g.h);
-  const totals = gs.flatMap((g) => g.tot);
-  const finals = gs.map((g) => Math.max(...g.tot));
-  const margins = gs.map((g) => { const t = [...g.tot].sort((a, b) => b - a); return t[0] - t[1]; });
-
-  // Snowy River's own measures, per hand
-  const nc = hands.map((h) => (h.c.match(/C/g) || []).length);
-  const homeHands = hands.filter((h) => h.home >= 0);
-  const chaserClimb = []; const watcherClimb = [];
-  const strength = []; const extreme = []; const score = []; const chase = [];
-  for (const h of hands) {
-    for (let s = 0; s < n; s++) {
-      (h.c[s] === 'C' ? chaserClimb : watcherClimb).push(h.ct[s]);
-      if (h.ds) { strength.push(h.ds[s]); extreme.push(h.de[s]); score.push(h.s[s]); chase.push(h.c[s] === 'C' ? 1 : 0); }
-    }
-  }
-  const hasB = hands.length > 0 && hands.every((h) => typeof h.b === 'number');
-  const hasO = hands.length > 0 && hands.every((h) => typeof h.o === 'string');
-  const fallsPerHand = hasO ? hands.map((h) => (h.o.match(/F/g) || []).length) : hands.map((h) => (h.c.match(/C/g) || []).length - (h.home >= 0 ? 1 : 0));
-  const tieHeelsHands = hands.filter((h) => h.heels >= 0);
-  return {
-    N, n, H: hands.length, W, bySeat, byOffset, byLevel, chi, levels,
-    handScores: hands.flatMap((h) => h.s), totals, finals, margins,
-    summitTricks: hands.map((h) => h.k),
-    homeArr: hands.map((h) => (h.home >= 0 ? 1 : 0)),
-    nobodyArr: nc.map((x) => (x === 0 ? 1 : 0)),
-    loneArr: nc.map((x) => (x === 1 ? 1 : 0)),
-    raceArr: nc.map((x) => (x >= 2 ? 1 : 0)),
-    chasersPerHand: nc,
-    loneHomeArr: homeHands.map((h) => ((h.c.match(/C/g) || []).length === 1 ? 1 : 0)),
-    fewestHomeArr: homeHands.map((h) => (h.ct[h.home] === Math.min(...h.ct) ? 1 : 0)),
-    chaserClimb, watcherClimb,
-    strength, extreme, score, chase,
-    corrStrength: pearson(strength, score), corrExtreme: pearson(extreme, score), corrN: strength.length,
-    mobValues: hands.map((h) => h.m),
-    brumbyStart: hasB ? [0, 1, 2, 3, 4].map((k) => hands.filter((h) => h.b === k).length) : null,
-    capArr: hands.map((h) => h.cap || 0),
-    capHands: hands.filter((h) => h.cap).length,
-    capGames: gs.filter((g) => g.h.some((h) => h.cap)).length,
-    maxMob: hands.reduce((x, h) => Math.max(x, h.m), 0),
-    fallsPerHand,
-    thArr: tieHeelsHands.map((h) => h.th || 0),
-    handsWithDescent: tieHeelsHands.length,
-    tiedArr: W.map((w) => (w.tied.length > 1 ? 1 : 0)),
-    tbArr: W.map((w) => (w.withTb.length < w.tied.length ? 1 : 0)),
-    sharedArr: W.map((w) => (w.withTb.length > 1 ? 1 : 0)),
-  };
-}
-
-// ---------- output ----------
-export function table(headers, rows) {
-  const widths = headers.map((h, i) => Math.max(String(h).length, ...rows.map((r) => String(r[i]).length)));
-  const fmt = (r) => '| ' + r.map((c, i) => String(c).padEnd(widths[i])).join(' | ') + ' |';
-  return [fmt(headers), '| ' + widths.map((w) => '-'.repeat(w)).join(' | ') + ' |', ...rows.map(fmt)].join('\n');
-}
-
-export function labelOf(data) {
-  const m = data.meta;
-  const c = Object.entries(m.consts || {}).map(([k, x]) => `${k}=${typeof x === 'object' ? JSON.stringify(x) : x}`).join(' ');
-  return `${m.players}p ${m.seats.join(',')}${m.rotate ? '' : ' (fixed seats)'}${m.jitter ? ` j${m.jitter}` : ''}${c ? ` ${c}` : ''}`;
-}
-
-const asProp = (arr) => (arr.length ? ci(sum(arr), arr.length) : 'n/a');
-const pctMean = (arr) => (arr.length ? `${pct(mean(arr))}` : 'n/a');
-
-export function report(files, { detail = false } = {}) {
-  const loaded = files.map((f) => ({ f, data: JSON.parse(readFileSync(f, 'utf8')) }));
-  const S = loaded.map((x) => ({ x, s: summarise(x.data) }));
+export function report(files, opts = {}) {
   const out = [];
-  const cols = ['', ...S.map(({ x }, i) => `[${i + 1}] ${labelOf(x.data)}`)];
-  const row = (name, f) => [name, ...S.map(({ s }) => f(s))];
-  out.push('== Summary ==');
-  out.push(table(cols, [
-    row('games', (s) => String(s.N)),
-    row('summit trick, mean ±95%', (s) => pm(s.summitTricks, 2)),
-    row('chasers per hand, mean ±95%', (s) => pm(s.chasersPerHand, 2)),
-    row('nobody chased %  [CI]', (s) => asProp(s.nobodyArr)),
-    row('one chaser %  [CI]', (s) => asProp(s.loneArr)),
-    row('two or more chasers %  [CI]', (s) => asProp(s.raceArr)),
-    row('mob brought home %  [CI]', (s) => asProp(s.homeArr)),
-    row('  ...by a lone chaser, % of homes  [CI]', (s) => asProp(s.loneHomeArr)),
-    row('  ...by the fewest-climb player, % of homes  [CI]', (s) => asProp(s.fewestHomeArr)),
-    row('falls per hand, mean ±95%', (s) => pm(s.fallsPerHand, 3)),
-    row('climb points: chasers v watchers', (s) => `${mean(s.chaserClimb).toFixed(2)} v ${mean(s.watcherClimb).toFixed(2)}`),
-    row('later-trick tie at the heels, % of descents', (s) => asProp(s.thArr)),
-    row('mob value, mean (max)', (s) => `${mean(s.mobValues).toFixed(2)} (${s.maxMob})`),
-    row('Brumby stack at the deal 0/1/2/3/4, %', (s) => (s.brumbyStart ? s.brumbyStart.map((k) => pctMean([k / s.H])).join(' / ') : 'n/a')),
-    row('4-Brumby cap binds: hands (games)', (s) => `${s.capHands} (${s.capGames})`),
-    row('link: hand strength v score, r [95%]', (s) => rci(s.corrStrength, s.corrN)),
-    row('link: hand extremity v score, r [95%]', (s) => rci(s.corrExtreme, s.corrN)),
-    row('score per hand, mean ±95%', (s) => pm(s.handScores)),
-    row('final total (mean, sd)', (s) => `${mean(s.totals).toFixed(1)} (${sd(s.totals).toFixed(1)})`),
-    row('winner total, mean', (s) => mean(s.finals).toFixed(1)),
-    row('margin 1st-2nd, mean ±95%', (s) => pm(s.margins)),
-    row('tie for 1st on total %  [CI]', (s) => asProp(s.tiedArr)),
-    row('tiebreak decided %  [CI]', (s) => asProp(s.tbArr)),
-    row('still shared after tiebreak %  [CI]', (s) => asProp(s.sharedArr)),
-    row('seat chi-square (df n-1)', (s) => s.chi.toFixed(1)),
-  ]));
-
-  for (const { x, s } of S) {
-    out.push('', `== [${S.findIndex((q) => q.x === x) + 1}] ${labelOf(x.data)} ==`);
-    out.push('Win % by bot (base rate = 1/n; "tiebreak" = the game rule; "no tiebreak" shares every tie):');
-    out.push(table(['bot', 'seat-games', 'win % tiebreak [95% CI]', 'win % no tiebreak [95% CI]', 'base %', 'score/hand', 'final total (sd)'],
-      s.byLevel.map((b) => [b.lv, b.n, ci(b.k, b.n), ci(b.k0, b.n), pct(b.base), b.perHand.toFixed(2), `${b.mean.toFixed(2)} (${b.sdTotal.toFixed(2)})`])));
-    if (detail || s.byLevel.length === 1 || !x.data.meta.rotate) {
-      out.push('', 'Win % by seat number:');
-      out.push(table(['seat', 'win % [95% CI]'], s.bySeat.map((b) => [b.seat, ci(b.k, b.n)])));
-      out.push('', 'Win % by position after the first dealer (0 = dealer of hand 1, 1 = first leader):');
-      out.push(table(['offset', 'win % [95% CI]'], s.byOffset.map((b) => [b.off, ci(b.k, b.n)])));
+  for (const f of files) {
+    const data = JSON.parse(readFileSync(f, 'utf8'));
+    const games = data.games; const n = data.meta.players;
+    const totals = games.flatMap((g) => g.tot.map((t, s) => ({ t, lv: g.lv[s] })));
+    out.push(`## ${f}`, `${games.length} games, ${n} players, seats ${data.meta.seats.join(', ')}${data.meta.rotate ? ' (rotating)' : ' (fixed)'}, seed ${data.meta.seed}, jitter ${data.meta.jitter}`, '');
+    out.push(winTable(games), '', seatTable(games), '');
+    const levels = [...new Set(games.flatMap((g) => g.lv))];
+    out.push('| Bot | Game total (mean ±CI) | sd | Hand score (mean) |', '|---|---|---|---|');
+    for (const lv of levels) {
+      const ts = totals.filter((x) => x.lv === lv).map((x) => x.t);
+      const hs = games.flatMap((g) => g.h.flatMap((h) => h.s.filter((_, s) => g.lv[s] === lv)));
+      out.push(`| ${lv} | ${pm(ts)} | ${sd(ts).toFixed(2)} | ${mean(hs).toFixed(2)} |`);
     }
+    out.push('');
+    const ties = games.filter((g) => g.tied.length > 1).length;
+    const tbSplit = games.filter((g) => g.tied.length > 1 && g.win.length < g.tied.length).length;
+    const shared = games.filter((g) => g.win.length > 1).length;
+    out.push(`Ties on the top total ${ci(ties, games.length)}%; of those the last-hand tiebreak separates ${tbSplit} of ${ties}; still shared ${ci(shared, games.length)}%.`);
+    const margins = games.map((g) => { const t = [...g.tot].sort((a, b) => b - a); return t[0] - t[1]; });
+    out.push(`Winning margin ${pm(margins)} points; winning score ${pm(games.map((g) => Math.max(...g.tot)))}; hand score sd ${sd(games.flatMap((g) => g.h.flatMap((h) => h.s))).toFixed(2)}.`, '');
+    const m = measures(games);
+    out.push('| Hand measure | Value (95% CI) |', '|---|---|');
+    for (const [label, e] of m) {
+      const cells = e.items.map((it) => {
+        const v = e.unit === 'pct' ? `${it.est.toFixed(1)}%` : (Number.isInteger(it.est) ? String(it.est) : it.est.toFixed(2));
+        return it.se === null || !Number.isFinite(it.se) ? v : `${v} ±${e.unit === 'pct' ? (1.96 * it.se).toFixed(1) : (1.96 * it.se).toFixed(2)}`;
+      });
+      out.push(`| ${label} | ${cells.join(' / ')} |`);
+    }
+    out.push('');
+    if (opts.python) out.push(crossCheckText(games, parsePython(readFileSync(opts.python, 'utf8')), opts.pyGames || 1000), '');
+    if (opts.wins) out.push(winsCrossCheckText(games, opts.wins), '');
   }
   return out.join('\n');
 }
 
-// ---------- hand bands: does a middle hand score less? ----------
-/** Mean hand score (and chase rate) by quartile of the dealt hand's extremity, and of its strength. */
-export function bandsTable(s) {
-  const quart = (key, label) => {
-    const idx = s[key].map((_, i) => i).sort((a, b) => s[key][a] - s[key][b]);
-    const rows = [];
-    for (let q = 0; q < 4; q++) {
-      const part = idx.slice(Math.floor((idx.length * q) / 4), Math.floor((idx.length * (q + 1)) / 4));
-      const xs = part.map((i) => s[key][i]); const sc = part.map((i) => s.score[i]); const ch = part.map((i) => s.chase[i]);
-      rows.push([`${label} Q${q + 1}${q === 0 ? ' (lowest)' : q === 3 ? ' (highest)' : ''}`, `${xs.reduce((x, y) => Math.min(x, y), Infinity).toFixed(1)} to ${xs.reduce((x, y) => Math.max(x, y), -Infinity).toFixed(1)}`, pm(sc, 2), pct(mean(ch), 1), part.length]);
-    }
-    return rows;
-  };
-  return table(['quartile of dealt hand', 'range', 'score per hand ±95%', 'chase %', 'seat-hands'], [...quart('extreme', 'extremity'), ...quart('strength', 'strength')]);
-}
-
-// ---------- cross-check against a second file (a reference simulator) ----------
-/**
- * Side-by-side table of the reference measures, with the z of the difference.
- * |z| < 1.96 = "within CI" (the difference is not distinguishable from noise at 95%).
- */
-export function crossCheck(jsFile, refFile) {
-  const a = summarise(JSON.parse(readFileSync(jsFile, 'utf8')));
-  const b = summarise(JSON.parse(readFileSync(refFile, 'utf8')));
-  const rows = [];
-  const add = (name, xs, ys, kind) => {
-    if (!xs.length || !ys.length) { rows.push([name, 'n/a', 'n/a', '-', '-']); return; }
-    const z = diffZ(xs, ys);
-    const f = kind === 'pct' ? (arr) => `${pct(mean(arr), 1)}%` : (arr) => mean(arr).toFixed(2);
-    rows.push([name, f(xs), f(ys), z.toFixed(2), Math.abs(z) < 1.96 ? 'within CI' : 'DIFFERS']);
-  };
-  add('summit trick', a.summitTricks, b.summitTricks, 'num');
-  add('nobody chased (share of hands)', a.nobodyArr, b.nobodyArr, 'pct');
-  add('one chaser (share of hands)', a.loneArr, b.loneArr, 'pct');
-  add('two or more chasers (share of hands)', a.raceArr, b.raceArr, 'pct');
-  add('mob brought home (share of hands)', a.homeArr, b.homeArr, 'pct');
-  add('  ...by a lone chaser (share of homes)', a.loneHomeArr, b.loneHomeArr, 'pct');
-  add('  ...by the fewest-climb player (share of homes)', a.fewestHomeArr, b.fewestHomeArr, 'pct');
-  add('climb points held by chasers', a.chaserClimb, b.chaserClimb, 'num');
-  add('climb points held by watchers', a.watcherClimb, b.watcherClimb, 'num');
-  add('mob value (mean)', a.mobValues, b.mobValues, 'num');
-  for (const [name, ra, rb] of [['link: hand strength v score (r)', a.corrStrength, b.corrStrength], ['link: hand extremity v score (r)', a.corrExtreme, b.corrExtreme]]) {
-    if (Number.isFinite(ra) && Number.isFinite(rb)) {
-      const z = corrZ(ra, a.corrN, rb, b.corrN);
-      rows.push([name, ra.toFixed(2), rb.toFixed(2), z.toFixed(2), Math.abs(z) < 1.96 ? 'within CI' : 'DIFFERS']);
-    } else rows.push([name, 'n/a', 'n/a', '-', '-']);
-  }
-  add('tied games (tie for 1st on total)', a.tiedArr, b.tiedArr, 'pct');
-  for (const lv of a.levels) {
-    const bl = b.byLevel.find((l) => l.lv === lv);
-    const al = a.byLevel.find((l) => l.lv === lv);
-    if (bl && al) add(`win % per seat: ${lv}`, al.cred0, bl.cred0, 'pct');
-  }
-  const head = ['measure', `This engine (${a.N} games)`, `Reference (${b.N} games)`, 'z of difference', 'verdict'];
-  return table(head, rows);
-}
-
+// ---------- main ----------
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const files = process.argv.slice(2).filter((a) => !a.startsWith('--'));
-  const vs = process.argv.find((a) => a.startsWith('--vs='));
-  if (!files.length) { console.error('usage: node tests/sim-report.mjs file.json [file2.json ...] [--detail] [--vs=reference.json] [--bands]'); process.exit(2); }
-  if (process.argv.includes('--bands')) console.log(bandsTable(summarise(JSON.parse(readFileSync(files[0], 'utf8')))));
-  else console.log(vs ? crossCheck(files[0], vs.slice(5)) : report(files, { detail: process.argv.includes('--detail') }));
+  const files = process.argv.slice(2).filter((x) => !x.startsWith('--'));
+  const opt = (k) => (process.argv.find((x) => x.startsWith(`--${k}=`)) || '').slice(k.length + 3) || null;
+  if (!files.length) { console.error('usage: node tests/sim-report.mjs a.json [b.json ...] [--python=sim/out-v5-base.txt] [--wins=play]'); process.exit(2); }
+  console.log(report(files, { python: opt('python'), wins: opt('wins') }));
 }
