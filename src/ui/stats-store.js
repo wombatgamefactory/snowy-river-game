@@ -8,8 +8,10 @@
 //
 // Game record, one per finished game:
 //   v, id, date (ISO), players, seed (string),
-//   rules {} (no switches), rules_version (5 = the split-card game; 4 = the old summit-steps game),
-//   rules_code ('std' = the current rules, i.e. v5; migrate() relabels records of the v4 game 'v4'),
+//   rules {} (no switches), rules_version (6 = the Climb row game; 5 = the split-card Chase / Watch game;
+//     4 = the old summit-steps game),
+//   rules_code ('std' = the current rules, i.e. v6; migrate() relabels records of the v5 game 'v5' and of
+//     the v4 game 'v4', so the three are never mixed),
 //   seats [{ seat, type: 'human'|'bot', level: null|'easy'|'medium'|'hard', name? }]  (name only for a
 //     human who typed one),
 //   hand_scores [[score by seat] by hand], hand_log [per hand, see handRecord],
@@ -17,16 +19,18 @@
 //   winners [seats], shared, tiebreak_used (the last hand separated seats tied on the top total),
 //   tied_on_total (two or more seats level on the top total),
 //   winning_score, margin, hands, tricks, seconds,
-//   v5 counts: chases (chasers over all hands), chases_by_seat, nobody_chased (hands nobody chased),
-//     chaser_counts (index = how many chased, value = hands), kept_value (Brumby value kept by chasers),
-//     colt_rows (hands the Colt was in the row), colt_kept (hands a chaser kept it).
+//   v6 counts: minus_by_seat (the -1 Climb card taken, by seat), colt_by_seat (the Colt taken, by seat),
+//     colt_rows (hands the Colt was in the row), negative_hands (seat-hands that scored below zero),
+//     brumby_cards (Brumby cards taken, all seats), brumby_value (their total value), reshuffles.
 //
-// Hand record (hand_log entry, see handRecord): choices ('C'/'W' by seat as one string), chasers (count),
-//   chaser_seats, watcher_seats, climb_tricks / descent_tricks / tricks_by_seat (tricks won, by seat),
-//   kept (Brumby ids kept, by seat), kept_values (their value, by seat), costs (chase cost paid, by seat),
-//   scores (hand total, by seat), row (6 ids), row_value, colt (in the row), colt_trick (1..6 | null),
-//   colt_winner (seat | null), colt_kept, top_home_seat, reshuffled, tricks (tricks played, 12).
-//   Records of the v4 game keep their own hand fields (end_reason, mob_value, outcome ...).
+// Hand record (hand_log entry, see handRecord): climb_tricks / descent_tricks / tricks_by_seat (tricks won,
+//   by seat), climb_cards (Climb ids by seat), climb_values (their value, by seat), climb_row_values (6),
+//   minus_position (1..6), minus_winner (seat), kept (Brumby ids by seat), kept_values (their value, by seat),
+//   scores (hand total, by seat = climb_values + kept_values), row (6 ids), row_value, colt (in the row),
+//   colt_trick (1..6 | null), colt_winner (seat | null), top_home_seat, home1_seat (null when out unseen),
+//   reshuffled, tricks (tricks played, 12).
+//   Records of the v5 game keep their own hand fields (choices, chasers, costs, colt_kept ...), and records
+//   of the v4 game theirs (end_reason, mob_value, outcome ...).
 
 import { VARIANTS, DEFAULT_RULES } from '../engine/index.js';
 import { STORE_PREFIX } from '../game-config.js';
@@ -34,9 +38,11 @@ import { STORE_PREFIX } from '../game-config.js';
 export const STORE_KEY = `${STORE_PREFIX}-stats-v1`;
 export const STORE_VERSION = 1;
 /** The rules this build plays. Written to every new record as rules_version. */
-export const RULES_VERSION = 5;
+export const RULES_VERSION = 6;
 /** The rules_code given to records written by the v4 game, so they are never mixed with today's 'std'. */
 export const V4_CODE = 'v4';
+/** The rules_code given to records written by the v5 game (Chase / Watch, split cards). */
+export const V5_CODE = 'v5';
 export const MAX_GAMES = 2000;
 
 const empty = () => ({ v: STORE_VERSION, games: [] });
@@ -86,15 +92,19 @@ export function createStatsStore(getStorage = defaultStorage) {
 }
 
 /**
- * Relabels records written by the v4 game (rules before 10/11/2026: summit steps, the mob, low wins).
- * Those records have no rules_version, so a record without one is a v4 record: it gets rules_version 4
- * and rules_code 'v4' (the stats screen then lists it apart from 'std', which now means v5). A record that
- * already has a rules_version is returned as it is (the same object), so migrating twice changes nothing.
+ * Relabels records written by earlier games so they are never mixed with today's 'std' (= v6).
+ *  - No rules_version: the v4 game (rules before 10/11/2026: summit steps, the mob, low wins). It gets
+ *    rules_version 4 and rules_code 'v4'.
+ *  - rules_version 5 and rules_code still 'std': the v5 game (split cards, Chase / Watch). It gets
+ *    rules_code 'v5' (rules_version stays 5).
+ * Anything else is returned as it is (the same object), so migrating twice changes nothing.
  * Never mutates its argument; never throws.
  */
 export function migrate(g) {
-  if (!g || typeof g !== 'object' || g.rules_version !== undefined) return g;
-  return { ...g, rules_version: 4, rules_code: V4_CODE };
+  if (!g || typeof g !== 'object') return g;
+  if (g.rules_version === undefined) return { ...g, rules_version: 4, rules_code: V4_CODE };
+  if (g.rules_version === 5 && g.rules_code === 'std') return { ...g, rules_code: V5_CODE };
+  return g;
 }
 
 /** A record read back from storage is trusted only as far as the summary needs. */
@@ -108,29 +118,27 @@ function isRecord(g) {
 /** 'human' or the bot level: the "seat kind" the stats are split by. */
 export const seatKind = (s) => (s.type === 'human' ? 'human' : (s.level || 'bot'));
 
-/** One hand's breakdown from a state.handLog entry (v5). */
+/** One hand's breakdown from a state.handLog entry (v6). */
 export function handRecord(h) {
-  const choices = h.choices.map((c) => (c === 'chase' ? 'C' : 'W'));
-  const seatsOf = (letter) => choices.map((c, i) => (c === letter ? i : -1)).filter((i) => i >= 0);
   return {
-    choices: choices.join(''),
-    chasers: h.chasers,
-    chaser_seats: seatsOf('C'),
-    watcher_seats: seatsOf('W'),
     climb_tricks: [...h.climbTricks],
     descent_tricks: [...h.descentTricks],
     tricks_by_seat: [...h.trickCounts],
+    climb_cards: h.climbCards.map((c) => [...c]),
+    climb_values: [...h.climbValues],
+    climb_row_values: [...h.climbRowValues],
+    minus_position: h.minusPosition,
+    minus_winner: h.minusWinner,
     kept: h.kept.map((k) => [...k]),
     kept_values: [...h.keptValues],
-    costs: [...h.costs],
     scores: [...h.scores],
     row: [...h.row],
     row_value: h.rowValue,
     colt: !!h.colt,
     colt_trick: h.coltTrick,
     colt_winner: h.coltWinner,
-    colt_kept: !!h.coltKept,
     top_home_seat: h.topHomeSeat,
+    home1_seat: h.home1Seat === undefined ? null : h.home1Seat,
     reshuffled: !!h.reshuffled,
     tricks: Array.isArray(h.tricks) ? h.tricks.length : 0,
   };
@@ -178,13 +186,13 @@ export function createRecorder(store, now = () => Date.now()) {
         margin: res.margin,
         hands: st.handLog.length,
         tricks: m.tricks,
-        nobody_chased: m.nobodyChased,
-        chases: m.chasesBySeat.reduce((a, b) => a + b, 0),
-        chases_by_seat: [...m.chasesBySeat],
-        chaser_counts: [...m.chaserCounts],
-        kept_value: m.keptValue,
+        minus_by_seat: [...m.minusBySeat],
+        colt_by_seat: [...m.coltBySeat],
         colt_rows: m.coltRows,
-        colt_kept: m.coltKept,
+        negative_hands: m.negativeHands,
+        brumby_cards: st.handLog.reduce((a, h) => a + h.kept.reduce((x, k) => x + k.length, 0), 0),
+        brumby_value: st.handLog.reduce((a, h) => a + h.keptValues.reduce((x, y) => x + y, 0), 0),
+        reshuffles: m.reshuffles,
         seconds: gameStartedAt === null ? 0 : Math.max(0, Math.round((now() - gameStartedAt) / 1000)),
       };
       store.addGame(rec);
@@ -197,7 +205,7 @@ export function createRecorder(store, now = () => Date.now()) {
 
 const SEAT_COLS = [1, 2, 3, 4, 5].flatMap((n) => [`seat${n}_type`, `seat${n}_name`]);
 /** Snowy River's own CSV columns after the shared ones (the matching cells are in gameToRow). */
-const GAME_COLUMNS = ['tricks', 'nobody_chased', 'chases', 'chases_by_seat', 'kept_value', 'colt_rows', 'colt_kept', 'hand_choices', 'hand_row_values'];
+const GAME_COLUMNS = ['tricks', 'minus_by_seat', 'colt_by_seat', 'colt_rows', 'negative_hands', 'brumby_cards', 'brumby_value', 'hand_row_values'];
 export const CSV_COLUMNS = [
   'date', 'id', 'seed', 'players', 'rules_code', 'rules_version',
   ...VARIANTS.map((v) => `rule_${v.name.toLowerCase()}`),
@@ -228,8 +236,8 @@ export function gameToRow(r) {
     ...seatCells,
     r.hands, (r.hand_scores || []).map((h) => h.join(' ')).join('|'), join(r.totals), ranks.join(' '),
     r.winners.map((s) => s + 1).join(' '), bool(r.shared), bool(r.tiebreak_used), bool(r.tied_on_total),
-    r.winning_score, r.margin, r.tricks, r.nobody_chased, r.chases, join(r.chases_by_seat), r.kept_value, r.colt_rows, r.colt_kept,
-    (r.hand_log || []).map((h) => h.choices).join(' '), (r.hand_log || []).map((h) => h.row_value).join(' '), r.seconds,
+    r.winning_score, r.margin, r.tricks, join(r.minus_by_seat), join(r.colt_by_seat), r.colt_rows, r.negative_hands, r.brumby_cards, r.brumby_value,
+    (r.hand_log || []).map((h) => h.row_value).join(' '), r.seconds,
   ];
 }
 
@@ -259,12 +267,13 @@ const tally = () => ({ seats: 0, wins: 0 });
 /**
  * Pure aggregation for the stats screen. `filter` is 'all' or a rules_code; the by-rules table
  * always covers every game so the codes can be compared side by side.
- * `extra` holds the v5 totals (shown in stats-view.js), counted from each v5 hand_log entry and never
- * from a v4 record: seatHands (a seat in a hand), hands, tricks, chases (chasers), nobodyChased, keptValue
- * (Brumby value kept by chasers), keptCards, chaserNet (their hand totals), coltRows, coltKept, coltByKind,
- * coltTopHome (Colt trick won by the top Home holder), humanHands / humanChases (the human seats' own Chase
- * numbers). `extra4` holds the v4 game's totals (hands, tricks, mobsHome, escapes, nobodyChased, chases,
- * falls) for records relabelled 'v4'.
+ * `extra` holds the v6 totals (shown in stats-view.js), counted from each v6 hand_log entry only: seatHands
+ * (a seat in a hand), hands, tricks, scoreSum, brumbyCards / brumbyValue (Brumby cards taken and their value),
+ * negHands (seat-hands below zero), minusTaken / minusByKind (the -1 Climb card, by seat kind), coltRows,
+ * coltByKind (who took the Colt), coltHome1 (taken by the Home 1 holder), coltTopHome, and the human seats' own
+ * numbers: humanHands, humanScoreSum, humanMinus, humanColt, humanNeg, humanBrumby, humanBrumbyValue.
+ * `extra5` holds the v5 game's totals (Chase / Watch, for records relabelled 'v5') and `extra4` the v4
+ * game's (hands, tricks, mobsHome, escapes, nobodyChased, chases, falls) for records relabelled 'v4'.
  */
 export function summarise(allGames, filter = 'all') {
   const games = (allGames || []).filter(isRecord).map(migrate);
@@ -276,7 +285,11 @@ export function summarise(allGames, filter = 'all') {
   const byPlayers = {};
   const ties = { games: sel.length, tied: 0, tiebreak: 0, shared: 0 };
   let handsScored = 0; let scoreSum = 0; let marginSum = 0;
-  const ex = { seatHands: 0, hands: 0, tricks: 0, chases: 0, nobodyChased: 0, keptValue: 0, keptCards: 0, chaserNet: 0, coltRows: 0, coltKept: 0, coltTopHome: 0, coltByKind: {}, humanHands: 0, humanChases: 0 };
+  const ex = {
+    seatHands: 0, hands: 0, tricks: 0, scoreSum: 0, brumbyCards: 0, brumbyValue: 0, negHands: 0, minusTaken: 0, minusByKind: {}, coltRows: 0, coltByKind: {},
+    coltHome1: 0, coltTopHome: 0, humanHands: 0, humanScoreSum: 0, humanMinus: 0, humanColt: 0, humanNeg: 0, humanBrumby: 0, humanBrumbyValue: 0,
+  };
+  const ex5 = { seatHands: 0, hands: 0, tricks: 0, chases: 0, nobodyChased: 0, keptValue: 0, keptCards: 0, chaserNet: 0, coltRows: 0, coltKept: 0, coltTopHome: 0, coltByKind: {}, humanHands: 0, humanChases: 0 };
   const ex4 = { hands: 0, tricks: 0, mobsHome: 0, escapes: 0, nobodyChased: 0, chases: 0, falls: 0 };
 
   for (const g of sel) {
@@ -309,28 +322,57 @@ export function summarise(allGames, filter = 'all') {
         ex4.chases += typeof h.choices === 'string' ? h.choices.split('C').length - 1 : 0;
         if (Array.isArray(h.outcomes)) ex4.falls += h.outcomes.filter((o) => o === 'fell').length;
       }
+    } else if (g.rules_version === 5) {
+      ex5.hands += log.length; ex5.tricks += g.tricks || 0;
+      for (const h of log) {
+        const ch = typeof h.choices === 'string' ? h.choices : '';
+        if (h.chasers === 0) ex5.nobodyChased++;
+        for (let i = 0; i < ch.length; i++) {
+          ex5.seatHands++;
+          const human = kinds[i] === 'human';
+          if (human) ex5.humanHands++;
+          if (ch[i] !== 'C') continue;
+          ex5.chases++;
+          if (human) ex5.humanChases++;
+          ex5.keptValue += (h.kept_values && h.kept_values[i]) || 0;
+          ex5.keptCards += (h.kept && h.kept[i] ? h.kept[i].length : 0);
+          ex5.chaserNet += (h.scores && h.scores[i]) || 0;
+        }
+        if (h.colt) {
+          ex5.coltRows++;
+          if (h.colt_kept) ex5.coltKept++;
+          if (h.colt_winner !== null && h.colt_winner !== undefined) {
+            const k = kinds[h.colt_winner] || 'bot';
+            ex5.coltByKind[k] = (ex5.coltByKind[k] || 0) + 1;
+            if (h.colt_winner === h.top_home_seat) ex5.coltTopHome++;
+          }
+        }
+      }
     } else {
       ex.hands += log.length; ex.tricks += g.tricks || 0;
       for (const h of log) {
-        const ch = typeof h.choices === 'string' ? h.choices : '';
-        if (h.chasers === 0) ex.nobodyChased++;
-        for (let i = 0; i < ch.length; i++) {
-          ex.seatHands++;
+        const scores = Array.isArray(h.scores) ? h.scores : [];
+        scores.forEach((sc, i) => {
           const human = kinds[i] === 'human';
-          if (human) ex.humanHands++;
-          if (ch[i] !== 'C') continue;
-          ex.chases++;
-          if (human) ex.humanChases++;
-          ex.keptValue += (h.kept_values && h.kept_values[i]) || 0;
-          ex.keptCards += (h.kept && h.kept[i] ? h.kept[i].length : 0);
-          ex.chaserNet += (h.scores && h.scores[i]) || 0;
+          ex.seatHands++; ex.scoreSum += sc;
+          if (sc < 0) { ex.negHands++; if (human) ex.humanNeg++; }
+          const cards = h.kept && h.kept[i] ? h.kept[i].length : 0;
+          const value = (h.kept_values && h.kept_values[i]) || 0;
+          ex.brumbyCards += cards; ex.brumbyValue += value;
+          if (human) { ex.humanHands++; ex.humanScoreSum += sc; ex.humanBrumby += cards; ex.humanBrumbyValue += value; }
+        });
+        if (h.minus_winner !== null && h.minus_winner !== undefined) {
+          const k = kinds[h.minus_winner] || 'bot';
+          ex.minusTaken++; ex.minusByKind[k] = (ex.minusByKind[k] || 0) + 1;
+          if (k === 'human') ex.humanMinus++;
         }
         if (h.colt) {
           ex.coltRows++;
-          if (h.colt_kept) ex.coltKept++;
           if (h.colt_winner !== null && h.colt_winner !== undefined) {
             const k = kinds[h.colt_winner] || 'bot';
             ex.coltByKind[k] = (ex.coltByKind[k] || 0) + 1;
+            if (k === 'human') ex.humanColt++;
+            if (h.home1_seat !== null && h.home1_seat !== undefined && h.colt_winner === h.home1_seat) ex.coltHome1++;
             if (h.colt_winner === h.top_home_seat) ex.coltTopHome++;
           }
         }
@@ -351,7 +393,8 @@ export function summarise(allGames, filter = 'all') {
     if (g.shared) r.shared++;
     rows.set(g.rules_code, r);
   }
-  const byRules = [...rows.values()].sort((a, b) => (a.code === 'std' ? -1 : b.code === 'std' ? 1 : b.games - a.games));
+  const order = (c) => (c === 'std' ? 0 : c === 'v5' ? 1 : c === 'v4' ? 2 : 3); // newest rules first
+  const byRules = [...rows.values()].sort((a, b) => order(a.code) - order(b.code) || b.games - a.games);
 
   return {
     total: sel.length,
@@ -359,7 +402,7 @@ export function summarise(allGames, filter = 'all') {
     filter,
     codes: byRules.map((r) => ({ code: r.code, games: r.games })),
     byKind, bySeat, humanVs, byPlayers, ties, byRules,
-    extra: ex, extra4: ex4,
+    extra: ex, extra5: ex5, extra4: ex4,
     avgScorePerHand: handsScored ? scoreSum / handsScored : null,
     avgMargin: sel.length ? marginSum / sel.length : null,
   };

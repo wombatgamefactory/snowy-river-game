@@ -73,7 +73,7 @@ async function playSome(page, count) {
   return played;
 }
 
-const CODE2 = 'std'; // Snowy River has no Playtest switches (VARIANTS is empty); 'std' = v5, 'v4' = relabelled old records
+const CODE2 = 'std'; // Snowy River has no Playtest switches (VARIANTS is empty); 'std' = v6, 'v5' and 'v4' = relabelled old records
 const V4_RECORD = {
   v: 1, id: 'gplanted-4', date: '2026-11-09T10:00:00.000Z', players: 3, seed: '4', rules: {}, rules_code: 'std',
   seats: [{ seat: 0, type: 'human', level: null }, { seat: 1, type: 'bot', level: 'easy' }, { seat: 2, type: 'bot', level: 'hard' }],
@@ -84,6 +84,17 @@ const V4_RECORD = {
     { end_reason: 'descent', outcome: 'escaped-watcher', choices: 'CCW', chasers: 2, outcomes: ['fell', 'fell', 'x'], mob_value: 5, scores: [1, 4, 0] },
     { end_reason: 'nobody-chases', outcome: 'nobody-chased', choices: 'WWW', chasers: 0, outcomes: ['x', 'x', 'x'], mob_value: 3, scores: [2, 2, 5] }],
 };
+const V5_RECORD = {
+  v: 1, id: 'gplanted-5', date: '2026-11-11T10:00:00.000Z', players: 3, seed: '5', rules: {}, rules_version: 5, rules_code: 'std',
+  seats: [{ seat: 0, type: 'human', level: null }, { seat: 1, type: 'bot', level: 'easy' }, { seat: 2, type: 'bot', level: 'hard' }],
+  hand_scores: [[5, 2, 1], [3, 3, 4], [6, 1, 2]], totals: [14, 6, 7], last_hand_scores: [6, 1, 2], ranking: [{ seat: 0, total: 14, last_hand_score: 6, rank: 1 }],
+  winners: [0], shared: false, tiebreak_used: false, tied_on_total: false, winning_score: 14, margin: 7, hands: 3, tricks: 36,
+  nobody_chased: 1, chases: 3, chases_by_seat: [2, 1, 0], chaser_counts: [1, 1, 1, 0, 0], kept_value: 6, colt_rows: 1, colt_kept: 1, seconds: 400,
+  hand_log: [{ choices: 'CWW', chasers: 1, kept: [['b1'], [], []], kept_values: [2, 0, 0], costs: [2, 0, 0], scores: [5, 2, 1], colt: false, colt_kept: false, colt_winner: null },
+    { choices: 'CCW', chasers: 2, kept: [['b2'], ['b3'], []], kept_values: [1, 1, 0], costs: [2, 2, 0], scores: [3, 3, 4], colt: true, colt_kept: true, colt_winner: 0, top_home_seat: 0 },
+    { choices: 'WWW', chasers: 0, kept: [[], [], []], kept_values: [0, 0, 0], costs: [0, 0, 0], scores: [6, 1, 2], colt: false, colt_kept: false, colt_winner: null }],
+};
+const V6_ROWS = ['Average hand score', 'Average hand score of a human seat', 'Took the -1 Climb card (human seats)', 'Brumby cards won (all seats)', 'Brumby cards won (human seats)', 'Hands ending below zero (all seats)', 'Hands ending below zero (human seats)', 'Colt in the row', 'Colt taken by a human seat (+4)', 'Colt taken by the Home 1 holder'];
 
 // ---------- empty state, then two games ----------
 {
@@ -107,23 +118,23 @@ const V4_RECORD = {
   const lead = await page.textContent('.dialog .st__lead');
   check('stats from the end screen: 2 games played', /^\s*2\s+games played/.test(lead), lead);
   const codes = await page.$$eval('.st__table tbody th', (ths) => ths.map((t) => t.textContent.trim()));
-  check('stats: only the current rules (v5) in the by-rules table', VARIANTS.length === 0 && codes.includes('Current rules (v5)') && !codes.some((c) => /^[a-z]+-/.test(c) || /v4/.test(c)), codes.join(' | '));
+  check('stats: only the current rules (v6) in the by-rules table', VARIANTS.length === 0 && codes.includes('Current rules (v6)') && !codes.some((c) => /^[a-z]+-/.test(c) || /v4|v5/.test(c)), codes.join(' | '));
   const sections = await page.$$eval('.st h3', (hs) => hs.map((h) => h.textContent));
-  check('stats: all sections present', ['Win rate by seat type', 'Win rate by seat position', 'Scores by player count', 'Chase, Watch and the Brumby row', 'Ties and the tiebreak', 'By rules'].every((s) => sections.includes(s)) && !sections.includes('The mob and the summit'), sections.join(' | '));
-  const mobRows = await page.$$eval('.st h3', (hs) => { const h = hs.find((x) => x.textContent === 'Chase, Watch and the Brumby row'); return [...h.nextElementSibling.nextElementSibling.querySelectorAll('tbody tr')].map((tr) => [...tr.children].map((c) => c.textContent.trim())); });
-  check('stats: the Snowy River section shows its eight v5 measures with numbers', mobRows.length === 8 && mobRows.map((r) => r[0]).join('|') === 'Chase rate (seats that chased)|Nobody chased|Brumby value won by chasers|Average hand total of a chaser|Colt in the row|Colt kept by a chaser (+4)|Colt trick won by the top Home holder|Human Chase rate' && mobRows.every((r) => r.slice(1).every((c) => /\d|-/.test(c) && !/NaN|undefined/.test(c))), JSON.stringify(mobRows));
+  check('stats: all sections present', ['Win rate by seat type', 'Win rate by seat position', 'Scores by player count', 'The Climb row and the Brumby row', 'Ties and the tiebreak', 'By rules'].every((s) => sections.includes(s)) && !sections.includes('The mob and the summit') && !sections.includes('Chase, Watch and the Brumby row'), sections.join(' | '));
+  const mobRows = await page.$$eval('.st h3', (hs) => { const h = hs.find((x) => x.textContent === 'The Climb row and the Brumby row'); return [...h.nextElementSibling.nextElementSibling.querySelectorAll('tbody tr')].map((tr) => [...tr.children].map((c) => c.textContent.trim())); });
+  check('stats: the Snowy River section shows its ten v6 measures with numbers', mobRows.length === 10 && mobRows.map((r) => r[0]).join('|') === V6_ROWS.join('|') && mobRows.every((r) => r.slice(1).every((c) => /\d|-/.test(c) && !/NaN|undefined/.test(c))), JSON.stringify(mobRows));
   fs.mkdirSync(path.join(ROOT, 'tests', 'tmp'), { recursive: true });
   await page.screenshot({ path: path.join(ROOT, 'tests', 'tmp', 'stats-screen.png') });
-  await page.evaluate(() => { const h = [...document.querySelectorAll('.st h3')].find((x) => x.textContent === 'Chase, Watch and the Brumby row'); h.scrollIntoView(); });
+  await page.evaluate(() => { const h = [...document.querySelectorAll('.st h3')].find((x) => x.textContent === 'The Climb row and the Brumby row'); h.scrollIntoView(); });
   await page.screenshot({ path: path.join(ROOT, 'tests', 'tmp', 'stats-screen-mob.png') });
   check('stats: scores by player count has 3 and 4 players', (await page.textContent('.dialog')).includes('3 players') && (await page.textContent('.dialog')).includes('4 players'));
   check('stats: small sample flagged', (await page.locator('.st__small').count()) > 0);
 
   const stored = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)).games, STORE);
-  check('store: two v5 records', stored.length === 2 && stored.every((g) => g.rules_code === 'std' && g.rules_version === 5) && stored[1].players === 3 && stored[0].players === 4);
-  check('store: records carry the hand breakdown and the Chase counts', stored.every((g) => g.hand_log.length === g.hands && Number.isInteger(g.tricks) && Number.isInteger(g.nobody_chased) && Number.isInteger(g.chases) && Number.isInteger(g.kept_value) && g.last_hand_scores.length === g.players));
-  check('store: v5 fields are consistent in every stored record', stored.every((g) => g.nobody_chased === g.hand_log.filter((h) => h.chasers === 0).length && g.chases === g.hand_log.reduce((a, h) => a + h.chasers, 0) && g.chases === g.chases_by_seat.reduce((a, b) => a + b, 0) && g.kept_value === g.hand_log.reduce((a, h) => a + h.kept_values.reduce((x, y) => x + y, 0), 0) && g.totals.every((t, i) => t === g.hand_scores.reduce((a, h) => a + h[i], 0)) && g.hand_log.every((h) => h.row.length === 6 && h.choices.length === g.players && h.tricks === 12 && h.scores.every((x, s) => x === (h.choices[s] === 'C' ? h.tricks_by_seat[s] + h.kept_values[s] - h.costs[s] : h.tricks_by_seat[s])))));
-  check('store: the chase cost is 3 at two players and 2 at three or four', stored.every((g) => g.hand_log.every((h) => h.costs.every((c, s) => c === (h.choices[s] === 'C' ? (g.players === 2 ? 3 : 2) : 0)))));
+  check('store: two v6 records', stored.length === 2 && stored.every((g) => g.rules_code === 'std' && g.rules_version === 6) && stored[1].players === 3 && stored[0].players === 4);
+  check('store: records carry the hand breakdown and the v6 counts', stored.every((g) => g.hand_log.length === g.hands && Number.isInteger(g.tricks) && Array.isArray(g.minus_by_seat) && Array.isArray(g.colt_by_seat) && Number.isInteger(g.colt_rows) && Number.isInteger(g.negative_hands) && Number.isInteger(g.brumby_cards) && Number.isInteger(g.brumby_value) && g.last_hand_scores.length === g.players));
+  check('store: v6 fields are consistent in every stored record', stored.every((g) => g.minus_by_seat.reduce((a, b) => a + b, 0) === g.hands && g.brumby_cards === g.hands * 6 && g.brumby_value === g.hand_log.reduce((a, h) => a + h.kept_values.reduce((x, y) => x + y, 0), 0) && g.totals.every((t, i) => t === g.hand_scores.reduce((a, h) => a + h[i], 0)) && g.hand_log.every((h) => h.row.length === 6 && h.climb_row_values.length === 6 && h.climb_values.reduce((a, b) => a + b, 0) === 4 && h.tricks === 12 && h.scores.every((x, s) => x === h.climb_values[s] + h.kept_values[s])) && g.hand_log.every((h) => !('choices' in h) && !('chasers' in h)) && !('chases' in g) && !('kept_value' in g)));
+  check('store: every hand names the -1 Climb card winner and the Colt winner when the Colt is out', stored.every((g) => g.hand_log.every((h) => Number.isInteger(h.minus_winner) && (h.colt ? Number.isInteger(h.colt_winner) : h.colt_winner === null))));
 
   // exports
   const [csvDl] = await Promise.all([page.waitForEvent('download'), page.click('[data-action=export-csv]')]);
@@ -132,8 +143,8 @@ const V4_RECORD = {
   const csv = csvText.trim().split('\n');
   check('export: csv has a header and one row per game, LF only', csv.length === 3 && csv[0].startsWith('date,id,seed,players,rules_code') && !csvText.includes('\r'), String(csv.length));
   const cols = csv[0].split(',');
-  check('export: csv has the v5 columns and a value in each', ['rules_version', 'nobody_chased', 'chases', 'chases_by_seat', 'kept_value', 'colt_rows', 'colt_kept', 'hand_choices'].every((c) => cols.includes(c)) && !cols.includes('mobs_home') && csv[1].split(',').length === cols.length && csv[1].split(',')[cols.indexOf('chases')] === String(stored[0].chases) && csv[1].split(',')[cols.indexOf('kept_value')] === String(stored[0].kept_value));
-  check('export: csv rows carry the rules code and version', csv[1].includes(',std,5,') && csv[2].includes(`,${CODE2},5,`));
+  check('export: csv has the v6 columns and a value in each', ['rules_version', 'minus_by_seat', 'colt_by_seat', 'colt_rows', 'negative_hands', 'brumby_cards', 'brumby_value', 'hand_row_values'].every((c) => cols.includes(c)) && !cols.includes('mobs_home') && !cols.includes('chases') && csv[1].split(',').length === cols.length && csv[1].split(',')[cols.indexOf('brumby_value')] === String(stored[0].brumby_value) && csv[1].split(',')[cols.indexOf('negative_hands')] === String(stored[0].negative_hands));
+  check('export: csv rows carry the rules code and version', csv[1].includes(',std,6,') && csv[2].includes(`,${CODE2},6,`));
   const [jsonDl] = await Promise.all([page.waitForEvent('download'), page.click('[data-action=export-json]')]);
   const json = JSON.parse(fs.readFileSync(await jsonDl.path(), 'utf8'));
   check('export: json is valid and holds both records, identical to the store', json.games.length === 2 && JSON.stringify(json.games) === JSON.stringify(stored) && /\.json$/.test(jsonDl.suggestedFilename()) && json.game === GAME_SLUG);
@@ -155,37 +166,43 @@ const V4_RECORD = {
   check('analytics: stats_exported fired for csv and json', names.filter((n) => n === 'stats_exported').length === 2);
   const ge = calls.filter((c) => c[1] === 'game_end').map((c) => c[2]);
   check('analytics: game_end carries the result summary, rules_code and counts', ge.length === 2 && ge[0].rules_code === 'std' && ge[1].rules_code === CODE2 && ge[0].player_count === 4 && ge[0].hands === 4 && ge[1].hands === 3
-    && ge.every((g) => g.game_name === GAME_SLUG && Number.isInteger(g.winning_score) && Number.isInteger(g.winning_margin) && /^(easy|shared)$/.test(g.winner_seat_type) && /^(yes|no)$/.test(g.tiebreak_used) && Number.isInteger(g.chasers) && g.chasers >= 0 && Number.isInteger(g.kept_value) && Number.isInteger(g.nobody_chased) && g.human_players === 0 && g.human_rank === undefined && g.bot_levels.startsWith('easy')), JSON.stringify(ge));
+    && ge.every((g) => g.game_name === GAME_SLUG && Number.isInteger(g.winning_score) && Number.isInteger(g.winning_margin) && /^(easy|shared)$/.test(g.winner_seat_type) && /^(yes|no)$/.test(g.tiebreak_used) && Number.isInteger(g.colt_in_row) && Number.isInteger(g.negative_hands) && !('chasers' in g) && !('nobody_chased' in g) && !('kept_value' in g) && g.human_players === 0 && g.human_rank === undefined && g.bot_levels.startsWith('easy')), JSON.stringify(ge));
   check('analytics: game_end matches the stored record', ge[0].winning_score === stored[0].winning_score && ge[0].winning_margin === stored[0].margin && ge[1].winning_score === stored[1].winning_score && ge[0].tricks === stored[0].tricks);
   check('analytics: no variant_changed (there are no switches)', !names.includes('variant_changed'));
   const he = calls.filter((c) => c[1] === 'hand_end').map((c) => c[2]);
-  check('analytics: hand_end carries nobody_chased (0 or 1), chasers and row_value; no mob params', he.length === 7 && he.every((h) => (h.nobody_chased === 0 || h.nobody_chased === 1) && h.nobody_chased === (h.chasers === 0 ? 1 : 0) && Number.isInteger(h.chasers) && Number.isInteger(h.row_value) && !('mobs_home' in h) && !('escapes' in h) && h.game_name === GAME_SLUG));
-  check('analytics: game_end per-game counts match the stored record', ge[0].nobody_chased === stored[0].nobody_chased && ge[0].chasers === stored[0].chases && ge[0].kept_value === stored[0].kept_value && ge[1].chasers === stored[1].chases && ge[1].kept_value === stored[1].kept_value);
+  check('analytics: hand_end carries colt_in_row (0 or 1) and row_value; no Chase or mob params', he.length === 7 && he.every((h) => (h.colt_in_row === 0 || h.colt_in_row === 1) && Number.isInteger(h.row_value) && !('chasers' in h) && !('nobody_chased' in h) && !('mobs_home' in h) && !('escapes' in h) && h.game_name === GAME_SLUG));
+  check('analytics: game_end per-game counts match the stored record', ge[0].colt_in_row === stored[0].colt_rows && ge[0].negative_hands === stored[0].negative_hands && ge[1].colt_in_row === stored[1].colt_rows && ge[1].negative_hands === stored[1].negative_hands);
   check('analytics: game_name is snowy-river on every event, and only whitelisted names are used', GAME_SLUG === 'snowy-river' && calls.every((c) => c[2] && c[2].game_name === 'snowy-river'));
   check('analytics: nothing sent says who won by name', !JSON.stringify(calls).match(/bot 1|Player|You/));
 
-  // a planted v4 record is relabelled and shown apart from the two v5 games
-  await page.evaluate(([k, rec]) => { const d = JSON.parse(localStorage.getItem(k)); d.games.unshift(rec); localStorage.setItem(k, JSON.stringify(d)); }, [STORE, V4_RECORD]);
+  // planted v4 and v5 records are relabelled and shown apart from the two v6 games
+  await page.evaluate(([k, recs]) => { const d = JSON.parse(localStorage.getItem(k)); d.games.unshift(...recs); localStorage.setItem(k, JSON.stringify(d)); }, [STORE, [V4_RECORD, V5_RECORD]]);
   await openStats(page, '.landing');
-  const lead5 = await page.textContent('.dialog .st__lead');
-  check('v4: with a v4 record in the store the screen still opens on the v5 games only', /^\s*2\s+games played under Current rules/.test(lead5), lead5);
+  const lead6 = await page.textContent('.dialog .st__lead');
+  check('old records: with v4 and v5 records in the store the screen still opens on the v6 games only', /^\s*2\s+games played under Current rules \(v6\)/.test(lead6), lead6);
   const opts = await page.$$eval('[data-action=stats-filter] option', (os) => os.map((o) => `${o.value}:${o.textContent.trim()}`));
-  check('v4: the rules filter lists v5 (2 games) and v4 (1 game)', opts.length === 2 && opts[0].startsWith('std:Current rules (v5) (2)') && opts[1].startsWith('v4:Old rules') && opts[1].endsWith('(1)'), opts.join(' | '));
-  check('v4: the v5 screen shows no mob section', (await page.locator('.st h3', { hasText: 'The mob and the summit' }).count()) === 0);
+  check('old records: the rules filter lists v6 (2 games), v5 (1 game) and v4 (1 game)', opts.length === 3 && opts[0].startsWith('std:Current rules (v6) (2)') && opts[1].startsWith('v5:Old rules (v5') && opts[1].endsWith('(1)') && opts[2].startsWith('v4:Old rules (v4') && opts[2].endsWith('(1)'), opts.join(' | '));
+  check('old records: the v6 screen shows neither the mob nor the Chase section', (await page.locator('.st h3', { hasText: 'The mob and the summit' }).count()) === 0 && (await page.locator('.st h3', { hasText: 'Chase, Watch' }).count()) === 0);
+  await page.selectOption('[data-action=stats-filter]', 'v5');
+  await page.waitForSelector('.st h3:has-text("Chase, Watch and the Brumby row")');
+  const lead5 = await page.textContent('.dialog .st__lead');
+  const ch5 = await page.$$eval('.st h3', (hs) => { const h = hs.find((x) => x.textContent === 'Chase, Watch and the Brumby row'); return [...h.nextElementSibling.nextElementSibling.querySelectorAll('tbody tr')].map((tr) => [...tr.children].map((c) => c.textContent.trim())); });
+  check('v5: the planted record shows under v5 with its own numbers', /^\s*1\s+game played under Old rules \(v5/.test(lead5) && ch5[0][0] === 'Chase rate (seats that chased)' && ch5[0][1] === '3 of 9' && ch5[1][1] === '1' && ch5[5][1] === '1 of 1' && !/NaN|undefined/.test(await page.textContent('.dialog .st')), lead5 + JSON.stringify(ch5));
   await page.selectOption('[data-action=stats-filter]', 'v4');
   await page.waitForSelector('.st h3:has-text("The mob and the summit")');
   const lead4 = await page.textContent('.dialog .st__lead');
   const mob4 = await page.$$eval('.st h3', (hs) => { const h = hs.find((x) => x.textContent === 'The mob and the summit'); return [...h.nextElementSibling.nextElementSibling.querySelectorAll('tbody tr')].map((tr) => [...tr.children].map((c) => c.textContent.trim())); });
-  check('v4: the planted record shows under v4 with its own numbers', /^\s*1\s+game played under Old rules/.test(lead4) && mob4[0][0] === 'Mob brought home' && mob4[0][1] === '1' && mob4[1][1] === '2' && mob4[2][1] === '1' && !/NaN|undefined/.test(await page.textContent('.dialog .st')), lead4 + JSON.stringify(mob4));
+  check('v4: the planted record shows under v4 with its own numbers', /^\s*1\s+game played under Old rules \(v4/.test(lead4) && mob4[0][0] === 'Mob brought home' && mob4[0][1] === '1' && mob4[1][1] === '2' && mob4[2][1] === '1' && !/NaN|undefined/.test(await page.textContent('.dialog .st')), lead4 + JSON.stringify(mob4));
   const relabelled = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)).games.length, STORE);
-  check('v4: the stored list now holds three games', relabelled === 3);
+  check('old records: the stored list now holds four games', relabelled === 4);
   const [csv3] = await Promise.all([page.waitForEvent('download'), page.click('[data-action=export-csv]')]);
   const csvLines = fs.readFileSync(await csv3.path(), 'utf8').trim().split('\n');
-  check('v4: the CSV export holds the v4 record (rules_code v4, version 4) beside the v5 ones', csvLines.length === 4 && csvLines.filter((l) => l.includes(',v4,4,')).length === 1 && csvLines.filter((l) => l.includes(',std,5,')).length === 2);
+  check('old records: the CSV export holds the v4 (code v4, version 4) and v5 (code v5, version 5) records beside the v6 ones', csvLines.length === 5 && csvLines.filter((l) => l.includes(',v4,4,')).length === 1 && csvLines.filter((l) => l.includes(',v5,5,')).length === 1 && csvLines.filter((l) => l.includes(',std,6,')).length === 2);
   const [json3] = await Promise.all([page.waitForEvent('download'), page.click('[data-action=export-json]')]);
   const jg = JSON.parse(fs.readFileSync(await json3.path(), 'utf8')).games;
-  check('v4: the JSON export holds all three records, the v4 one relabelled', jg.length === 3 && jg.some((g) => g.id === 'gplanted-4' && g.rules_code === 'v4' && g.rules_version === 4) && jg.filter((g) => g.rules_version === 5).length === 2);
+  check('old records: the JSON export holds all four records, the old ones relabelled', jg.length === 4 && jg.some((g) => g.id === 'gplanted-4' && g.rules_code === 'v4' && g.rules_version === 4) && jg.some((g) => g.id === 'gplanted-5' && g.rules_code === 'v5' && g.rules_version === 5) && jg.filter((g) => g.rules_version === 6 && g.rules_code === 'std').length === 2);
   await page.keyboard.press('Escape');
+
 
   // the clear button, with a confirm
   await openStats(page, '.landing');
@@ -219,8 +236,8 @@ const V4_RECORD = {
   check('bug: valid JSON that round-trips', JSON.stringify(JSON.parse(JSON.stringify(rep))) === JSON.stringify(rep) && text.trim().startsWith('{'));
   check('bug: report has state, diagnostics, controller and logs', rep.schemaVersion === 1 && rep.game && rep.game.kind === 'game' && rep.game.n === 4 && rep.diagnostics && Array.isArray(rep.diagnostics.cards) && Array.isArray(rep.diagnostics.legalActions) && rep.controller.seed === 41 && rep.player.title === 'Card would not play' && rep.player.whatHappened === 'clicked and nothing');
   const sn = rep.diagnostics.snowy;
-  check('bug: diagnostics hold the Snowy River fields', sn && typeof sn.phase === 'string' && Number.isInteger(sn.marker) && Array.isArray(sn.row) && Array.isArray(sn.kept) && !('summitStep' in sn), JSON.stringify(sn));
-  check('bug: diagnostics hold the Brumby deck counts, the choices (hidden until revealed) and a block reason slot per card', Number.isInteger(sn.brumbyDeckCount) && Number.isInteger(sn.brumbyDiscardCount) && Array.isArray(sn.chosen) && sn.chosen.length === 4 && (sn.revealed ? Array.isArray(sn.choicesRevealed) : sn.choicesRevealed === null) && rep.diagnostics.cards.length === rep.game.hands[rep.diagnostics.seat].length && rep.diagnostics.cards.every((c) => c.blockReason === null || typeof c.blockReason === 'string'));
+  check('bug: diagnostics hold the v6 Snowy River fields', sn && typeof sn.phase === 'string' && /^(highest|lowest)$/.test(sn.direction) && /^(escape|home)$/.test(sn.trump) && Array.isArray(sn.climbRow) && sn.climbRowDealt.length === 6 && Array.isArray(sn.climbCards) && sn.climbCards.length === 4 && Array.isArray(sn.row) && Array.isArray(sn.kept) && !('marker' in sn) && !('handsTurned' in sn) && !('chosen' in sn) && !('summitStep' in sn), JSON.stringify(sn));
+  check('bug: diagnostics hold the Brumby deck counts and a block reason slot per card', Number.isInteger(sn.brumbyDeckCount) && Number.isInteger(sn.brumbyDiscardCount) && rep.diagnostics.cards.length === rep.game.hands[rep.diagnostics.seat].length && rep.diagnostics.cards.every((c) => c.blockReason === null || typeof c.blockReason === 'string'));
   check('bug: action log covers human and bot plays', rep.actionLog.length >= 8 && new Set(rep.actionLog.map((a) => a.seatType)).size >= 2 && rep.actionLog.some((a) => a.kind === 'play') && rep.actionLog.some((a) => a.kind === 'trick-won'));
   check('bug: mailto link shown with the contact address', (await page.locator('.bug a[href^="mailto:info@wombatgamefactory.com?"]').count()) === 1);
   const archived = await page.evaluate((k) => JSON.parse(localStorage.getItem(k)), BUGS);

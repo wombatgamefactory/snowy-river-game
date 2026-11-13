@@ -91,10 +91,10 @@ function diagnosticSeat(ctl) {
 }
 
 /**
- * What helps reproduce a Snowy River report: the phase, the marker (climb tricks played), the Brumby row, kept cards and deck counts,
- * the summit choices (only the values once revealed; before that, who has chosen), the counts so far,
- * and the engine's block reason for every card in the diagnostic seat's hand (null = the engine says
- * it was legal, so a refusal would be a UI problem).
+ * What helps reproduce a Snowy River report: the phase and half (direction and trumps), the trick numbers,
+ * the Climb row (as dealt and what is left), every seat's Climb and Brumby cards taken, the Brumby row,
+ * deck and discard counts, the scores so far, and the engine's block reason for every card in the
+ * diagnostic seat's hand (null = the engine says it was legal, so a refusal would be a UI problem).
  */
 function diagnostics(state, ctl) {
   const seat = diagnosticSeat(ctl);
@@ -111,18 +111,18 @@ function diagnostics(state, ctl) {
       handNo: state.handNo,
       phase: state.phase,
       half: state.phase === 'descent' ? 'descent' : 'climb',
-      handsTurned: state.handsTurned,
-      marker: state.marker,
+      direction: state.phase === 'descent' ? 'lowest' : 'highest',
+      trump: state.phase === 'descent' ? 'home' : 'escape',
       trickNo: state.trickNo,
+      climbTrickNo: state.climbTrickNo,
       descentTrickNo: state.descentTrickNo,
       leader: state.leader,
       ledSuit: state.trick ? state.trick.ledSuit : null,
       climbTricks: state.climbTricks,
       descentTricks: state.descentTricks,
-      revealed: state.revealed,
-      chosen: state.choices.map((c) => c !== null),
-      choicesRevealed: state.revealed ? state.choices : null,
-      choiceOrder: state.choiceOrder,
+      climbRow: state.climbRow,
+      climbRowDealt: state.climbRowDealt,
+      climbCards: state.climbCards,
       row: state.row,
       kept: state.kept,
       brumbyDeckCount: state.brumbyDeck.length,

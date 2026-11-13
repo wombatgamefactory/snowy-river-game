@@ -1,9 +1,10 @@
 // stats-view.js - the stats screen markup (a dialog body) and the download helper. Pure string
 // builders except download(), which needs the DOM. Numbers always come with their counts so a
 // small sample is obvious.
-// The 'Chase, Watch and the Brumby row' section is Snowy River's own v5 section (summarise().extra); records
-// of the v4 game (rules_code 'v4') get 'The mob and the summit' instead (extra4). The screen shows ONE rules
-// code at a time (the newest, 'std' = v5, unless the player picks another), so v4 and v5 never mix.
+// 'The Climb row and the Brumby row' is Snowy River's own v6 section (summarise().extra); records of the v5
+// game (rules_code 'v5') get 'Chase, Watch and the Brumby row' (extra5) and records of the v4 game ('v4')
+// 'The mob and the summit' (extra4). The screen shows ONE rules code at a time (the newest, 'std' = v6,
+// unless the player picks another), so v4, v5 and v6 never mix.
 // Keep the section titles in step with tests/stats-browser.mjs.
 
 import { esc } from './assets.js';
@@ -15,7 +16,7 @@ const LEVEL_LABEL = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
 const pct = (n, d) => (d ? `${Math.round((100 * n) / d)}%` : '-');
 const num = (x, dp = 1) => (x === null || x === undefined || Number.isNaN(x) ? '-' : x.toFixed(dp));
 const small = (n) => (n < 10 ? ' <span class="st__small" title="Fewer than 10 games: treat with care">(small sample)</span>' : '');
-const codeLabel = (c) => (c === 'std' ? 'Current rules (v5)' : c === 'v4' ? 'Old rules (v4, before 10/11/2026)' : c);
+const codeLabel = (c) => (c === 'std' ? 'Current rules (v6)' : c === 'v5' ? 'Old rules (v5, Chase and Watch)' : c === 'v4' ? 'Old rules (v4, before 10/11/2026)' : c);
 const rateOf = (d, what) => (d ? ` of ${what}` : '');
 
 function table(head, rows) {
@@ -34,12 +35,35 @@ export function effectiveFilter(codes, filter) {
   return codes.some((c) => c.code === 'std') ? 'std' : (codes[0] ? codes[0].code : 'all');
 }
 
-/** The v5 measures: Chase and Watch, Brumby cards kept, the Colt. */
-function v5Section(s) {
+/** The v6 measures: hand scores, the -1 Climb card, Brumby cards won, the Colt, hands below zero. */
+function v6Section(s) {
   const ex = s.extra;
   const colt = Object.entries(ex.coltByKind).map(([k, n]) => `${KIND_LABEL[k] || k} ${n}`).join(', ');
+  const minus = Object.entries(ex.minusByKind).map(([k, n]) => `${KIND_LABEL[k] || k} ${n}`).join(', ');
+  return `<h3>The Climb row and the Brumby row</h3>
+    <p class="st__muted">Over ${ex.hands} hand${ex.hands === 1 ? '' : 's'} (${ex.tricks} tricks played). Your score is the Climb cards and Brumby cards you take; tricks themselves score nothing.${small(s.total)}</p>
+    ${table(['Measure', 'Count', 'Rate'], [
+      `<tr><th scope="row">Average hand score</th><td>${ex.seatHands} seat-hands</td><td>${num(ex.seatHands ? ex.scoreSum / ex.seatHands : null)}</td></tr>`,
+      `<tr><th scope="row">Average hand score of a human seat</th><td>${ex.humanHands} hands</td><td>${num(ex.humanHands ? ex.humanScoreSum / ex.humanHands : null)}</td></tr>`,
+      `<tr><th scope="row">Took the -1 Climb card (human seats)</th><td>${ex.humanMinus} of ${ex.humanHands}</td><td>${pct(ex.humanMinus, ex.humanHands)}${rateOf(ex.humanHands, 'human hands')}</td></tr>`,
+      `<tr><th scope="row">Brumby cards won (all seats)</th><td>${ex.brumbyCards} cards, ${ex.brumbyValue} points</td><td>${num(ex.brumbyCards ? ex.brumbyValue / ex.brumbyCards : null)} per card</td></tr>`,
+      `<tr><th scope="row">Brumby cards won (human seats)</th><td>${ex.humanBrumby} cards, ${ex.humanBrumbyValue} points</td><td>${num(ex.humanBrumby ? ex.humanBrumbyValue / ex.humanBrumby : null)} per card</td></tr>`,
+      `<tr><th scope="row">Hands ending below zero (all seats)</th><td>${ex.negHands} of ${ex.seatHands}</td><td>${pct(ex.negHands, ex.seatHands)}${rateOf(ex.seatHands, 'seat-hands')}</td></tr>`,
+      `<tr><th scope="row">Hands ending below zero (human seats)</th><td>${ex.humanNeg} of ${ex.humanHands}</td><td>${pct(ex.humanNeg, ex.humanHands)}${rateOf(ex.humanHands, 'human hands')}</td></tr>`,
+      `<tr><th scope="row">Colt in the row</th><td>${ex.coltRows}</td><td>${pct(ex.coltRows, ex.hands)}${rateOf(ex.hands, 'hands')}</td></tr>`,
+      `<tr><th scope="row">Colt taken by a human seat (+4)</th><td>${ex.humanColt} of ${ex.coltRows}</td><td>${pct(ex.humanColt, ex.coltRows)}${rateOf(ex.coltRows, 'Colt hands')}</td></tr>`,
+      `<tr><th scope="row">Colt taken by the Home 1 holder</th><td>${ex.coltHome1} of ${ex.coltRows}</td><td>${pct(ex.coltHome1, ex.coltRows)}${rateOf(ex.coltRows, 'Colt hands')}</td></tr>`,
+    ])}
+    ${minus ? `<p class="st__muted">-1 Climb card taken by: ${esc(minus)}.</p>` : ''}
+    ${colt ? `<p class="st__muted">Colt taken by: ${esc(colt)}.</p>` : ''}`;
+}
+
+/** The v5 game's section, for records relabelled 'v5': Chase and Watch, Brumby cards kept, the Colt. */
+function v5Section(s) {
+  const ex = s.extra5;
+  const colt = Object.entries(ex.coltByKind).map(([k, n]) => `${KIND_LABEL[k] || k} ${n}`).join(', ');
   return `<h3>Chase, Watch and the Brumby row</h3>
-    <p class="st__muted">Over ${ex.hands} hand${ex.hands === 1 ? '' : 's'} (${ex.tricks} tricks played). A chaser keeps the Brumby card each descent trick they win and pays the chase cost; a watcher sends it off.${small(s.total)}</p>
+    <p class="st__muted">Over ${ex.hands} hand${ex.hands === 1 ? '' : 's'} (${ex.tricks} tricks played) under the old v5 rules. A chaser kept the Brumby card each descent trick they won and paid the chase cost; a watcher sent it off.${small(s.total)}</p>
     ${table(['Measure', 'Count', 'Rate'], [
       `<tr><th scope="row">Chase rate (seats that chased)</th><td>${ex.chases} of ${ex.seatHands}</td><td>${pct(ex.chases, ex.seatHands)}${rateOf(ex.seatHands, 'seat-hands')}</td></tr>`,
       `<tr><th scope="row">Nobody chased</th><td>${ex.nobodyChased}</td><td>${pct(ex.nobodyChased, ex.hands)}${rateOf(ex.hands, 'hands')}</td></tr>`,
@@ -102,12 +126,12 @@ export function statsHtml(data, filter = 'all') {
     ${table(['Position', 'Games', 'Wins', 'Win rate'], posRows)}
     <h3>Scores by player count</h3>
     ${table(['Players', 'Games', 'Avg score per hand', 'Avg margin', 'Avg winning score'], playerRows)}
-${s.filter === 'v4' ? v4Section(s) : v5Section(s)}
+${s.filter === 'v4' ? v4Section(s) : s.filter === 'v5' ? v5Section(s) : v6Section(s)}
     <h3>Ties and the tiebreak</h3>
     <p class="st__muted">${s.filter === 'v4' ? 'The tiebreak was the most mobs brought home; if that was level too, the win was shared.' : 'The tiebreak is the most points in the last hand; if that is level too, the win is shared.'}</p>
     <p>Level on the top total: <b>${t.tied}</b> of ${t.games} (${pct(t.tied, t.games)}). Tiebreak decided it: <b>${t.tiebreak}</b> (${pct(t.tiebreak, t.games)}). Win shared: <b>${t.shared}</b> (${pct(t.shared, t.games)}).${small(t.games)}</p>
     <h3>By rules</h3>
-    <p class="st__muted">Games played under different rules are never mixed: the current rules (v5, split cards and the Brumby row) and, if you played before 10/11/2026, the old v4 rules.</p>
+    <p class="st__muted">Games played under different rules are never mixed: the current rules (v6, the Climb row and the Brumby row) and, if you played earlier, the old v5 and v4 rules.</p>
     ${table(['Rules', 'Games', 'Avg score per hand', 'Avg margin', 'Level on top', 'Tiebreak decided', 'Shared win'], ruleRows)}
     <p class="st__muted">Stored in this browser only (last 2000 games). Nothing here is sent anywhere.</p>
   </div>`;
