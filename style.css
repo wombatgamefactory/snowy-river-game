@@ -306,7 +306,11 @@ body[data-busy='1'] .stage { cursor: pointer; }
 .hint-dot { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font-size: 0.7rem; font-weight: 900; color: #fff; vertical-align: 1px; }
 .hint-dot.is-win { background: var(--good); }
 .hint-dot.is-lose { background: #6b6b6b; margin-left: 8px; }
-.preview { min-height: 2.7em; margin: 4px 0 0; font-weight: 600; color: var(--ink-soft); }
+/* The hint line always has room for its longest sentence, so hovering a card never changes the page height (on a narrow
+   window the page would jump under the pointer and the hint would flicker on and off). */
+.preview { min-height: 7.6em; margin: 4px 0 0; font-weight: 600; color: var(--ink-soft); }
+@media (min-width: 560px) { .preview { min-height: 4.8em; } }
+@media (min-width: 1000px) { .preview { min-height: 3.3em; } }
 .preview--on { color: var(--ink); }
 .note { margin: 0; color: var(--accent-dark); font-weight: 700; min-height: 1.3em; }
 

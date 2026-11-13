@@ -6,8 +6,7 @@
 // Seats are 0..n-1 clockwise; "left of X" is (X + 1) mod n. Who is human or bot is a UI
 // concern and is NOT in the engine state. Everything "per player" is an array indexed by seat.
 //
-// The state shape, schema 3 (each field is described where it is created, in startGame below; the
-// contract for the bot and UI workers is web-game-docs/engine-api-v3.md):
+// The state shape, schema 3 (each field is described where it is created, in startGame below):
 //   kind 'game', schema 3, seed, n, rules, params, rulesCode, rng, deals, manualSeats,
 //   firstDealer, dealer, handNo,
 //   phase 'climb' | 'descent' | 'handEnd' (transient) | 'over', toAct, leader,

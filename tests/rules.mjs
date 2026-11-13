@@ -1,4 +1,4 @@
-// rules.mjs - one check (or a few) per numbered rule of Snowy River (v6 rules, web-game-docs/rules-spec-v3.md),
+// rules.mjs - one check (or a few) per numbered rule of Snowy River (v6 rules),
 // each citing its R-number. Hand-built positions (tests/lib.mjs position()) for the trick and scoring rules,
 // seeded Easy-bot games for the structure, the rows, the Brumby deck across hands and the view.
 // Semantics: PERMANENTLY GREEN. Exit 1 on any failure.
@@ -404,7 +404,7 @@ const CLIMB6 = ['climb-plus1-1', 'climb-plus1-2', 'climb-minus1', 'climb-plus1-3
     if (getActionBlockReason(g, a) !== null) { okBots = false; break; }
     applyAction(g, a);
   }
-  check('R12.3 / R12.4 Easy, Medium and Hard return legal actions from the view (Medium and Hard are stand-ins that play like Easy until T4)', okBots && g.phase === 'over');
+  check('R12.3 / R12.4 Easy, Medium and Hard return legal actions from the view (Medium and Hard play from their own rules)', okBots && g.phase === 'over');
   check('R12 actions with an unknown shape are refused', getActionBlockReason(s, { type: 'bid', n: 3 }) !== null && throws(() => applyAction(s, { type: 'summit', choice: 'chase' })));
 }
 

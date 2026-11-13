@@ -11,9 +11,9 @@
 //
 // Definitions (the Python's where it has one, so the two compare like for like):
 //   top Home holder       the seat holding the lowest-numbered Home card among the cards STILL IN HAND at the summit
-//                         (the Python's reading, rules-spec-v3 D9; Colt measures use hands with the Colt in the row
+//                         (the Python's reading; Colt measures use hands with the Colt in the row
 //                         and a Home card in some hand)
-//   Home 1 holder         the seat DEALT home-1 (rules-spec-v3 R6.8 reading; null at 2-3 players when it is out unseen)
+//   Home 1 holder         the seat DEALT home-1 (null at 2-3 players when it is out unseen)
 //   trumps dealt          cards of the Escape and Home suits in the 12 dealt; extremes dealt = number 1-2 or 11-12
 //   climb leader          the seat with the most climb tricks before the trick in question (only when one seat leads)
 //   tied before / after   two or more on the top total / still two or more after the last-hand tiebreak (shared)
@@ -230,7 +230,7 @@ export function parsePython(text, header = '-- v6: cards only') {
   return table;
 }
 
-/** A full-precision Python re-run (JSON from web-game-docs/conformance/... see the report) as the same table shape; no rounding. */
+/** A full-precision Python re-run (JSON from a re-run of the reference simulator) as the same table shape; no rounding. */
 export function pythonFromJson(obj) {
   const table = new Map();
   for (const [label, byN] of Object.entries(obj.measures)) {

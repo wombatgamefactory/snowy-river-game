@@ -66,7 +66,7 @@ const PROBES = ['medium-dealorder'];
 /**
  * medium-dealorder: Medium's own decisions, but with the hand handed over in a random order fixed for the hand instead of
  * the engine's sorted order. The Python's smart bot breaks ties by its hand list, which is the deal order (a shuffle), while
- * the registry Medium sees the sorted hand (rules-spec-v3 D-notes, T4 "tie-order differences"). This probe shows what that
+ * the registry Medium sees the sorted hand (the tie-order difference). This probe shows what that
  * difference does to the all-Medium measures. Uses the bot's own rng stream, so deals are untouched.
  */
 function dealOrderMedium(id) {

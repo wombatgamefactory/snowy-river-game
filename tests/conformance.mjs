@@ -1,6 +1,6 @@
 // conformance.mjs - replays the Python fixtures (tests/fixtures/python-conformance.json, made by
-// web-game-docs/conformance/make-python-fixtures-v3.py outside the repo, which drives the v6 Python simulator
-// sim/snowy-river-sim-v6.py unchanged with random legal play at 2, 3, 4 and 5 players) through the JS engine,
+// a script that lives outside the repo, which drives the v6 Python simulator
+// unchanged with random legal play at 2, 3, 4 and 5 players) through the JS engine,
 // and requires identical results: the dealer, the seat to play and the size of the legal option set at every
 // card, every trick winner (climb and descent), the Climb row and the Brumby row (values in order, fed in
 // through the test hook `deals[h].climbRow` / `deals[h].row`), whether the Brumby row came from a fresh
@@ -9,7 +9,7 @@
 // last-hand tiebreak.
 // Every game is replayed twice: learner style (every card clicked, legal sets compared at every play)
 // and with forced cards auto-played (the recorded plays must match the auto events).
-// Known Python differences (rules spec v3 section 13): D4 the shuffles are not reproducible, so deals and
+// Known Python differences: D4 the shuffles are not reproducible, so deals and
 // rows come in by the hook; D5 Climb and Brumby cards are bare values in the Python, so they are compared by
 // value; D7 the first dealer is seat 0; D11 the plays are the generator's random ones. Nothing in the
 // Python's v6 rules differs from the spec, so nothing had to be left out.

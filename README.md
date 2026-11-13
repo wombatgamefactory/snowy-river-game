@@ -1,34 +1,34 @@
 # Snowy River
 
-A trick-taking card game for 2 to 4 players, played in the browser. About 20 to 30 minutes a game, ages 10 and up.
+A trick-taking card game for 2 to 5 players, played in the browser. About 20 to 30 minutes a game, ages 10 and up.
 
-*The big horses win going up. At the summit, turn your hand round.* Every card has two numbers, one for the climb and an upside-down one for the descent, and the two add up to 13. Climb the mountain with the mob, then turn your whole hand round, and the weedy ponies become the best cards in the game. At the summit everyone secretly chooses: **Chase** the mob down the far side, or **Watch** from the top.
+*The big horses win going up. Over the top, the smallest horse wins.* Every card has one number. Climb the mountain with the highest card, then turn the whole game round: over the top the lowest card wins, and the weedy ponies become the best cards in the game. Every trick wins you a card from the row on the table, a Climb card on the way up and a Brumby card on the way down, so the question is always what this trick is worth and whether you want it.
 
 **Play it online: <https://www.wombatgamefactory.com/snowy-river-game/>**
 
 ## How a game goes
 
-- The deck is 48 horse cards in four suits (Escape, Climb, Descent and Home), numbered 1 to 12. Each card has two numbers: the climb number at the top and the descent number, 13 minus it, upside down at the bottom. Everyone is dealt 12 cards, climb side up. The cards not dealt stay out of the game, unseen. A game is three hands with two or three players and four hands with four.
-- **The climb: six tricks.** The player left of the dealer leads any card. You must follow the suit led if you can; if you cannot, you may play anything. **Escape is trumps** on the climb: if any Escape card is played, the highest Escape card wins. Otherwise the highest card of the suit led wins. The winner leads the next trick, and the mob climbs one step up the **Mountain** card after every trick.
-- **Every trick is 1 point,** up or down. You keep the tricks you win in one pile.
-- **The summit.** After the sixth trick everyone turns their whole hand round, so the numbers that were at the bottom now count, and the Mountain card turns over. **Home is trumps** from here. Six **Brumby** cards are laid out face up in a row, one for each descent trick, and the Colt may be among them. Everyone secretly picks a **Chase** or a **Watch** card, and the cards are turned over together.
-- **Chase or Watch.** A watcher pays nothing. A chaser pays 2 (3 with two players) and keeps the Brumby card of every descent trick they win. Most Brumby cards are worth points, a few (flint stones, wombat holes) cost you, and the Colt is worth 4. A watcher who wins a descent trick sends that Brumby card off instead.
-- **The descent: six tricks.** The player who won the last climb trick leads. The same rules, reading the turned numbers, with Home as trumps. The winner of each trick takes the next Brumby card from the row, left to right.
-- **Scoring.** A watcher scores 1 per trick. A chaser scores 1 per trick, plus the Brumby cards they kept, minus the Chase cost, and can finish a hand below zero. The 12 Brumby cards are used up over two hands and then shuffled again.
+- The deck is 48 horse cards in four suits (Escape, Climb, Descent and Home), numbered 1 to 12, with one number on each card. With five players the violet Muster suit joins in, which makes 60 cards. Everyone is dealt 12 cards and the cards not dealt stay out of the game, unseen. A game is one hand for each player, or three hands with two players.
+- **The Climb row.** Each hand starts with six Climb cards laid face up in a row: five worth +1 and one worth -1. The row is shuffled every hand, so nobody knows in advance which trick wins the -1.
+- **The climb: six tricks, highest wins.** The player left of the dealer leads any card. You must follow the suit led if you can; if you cannot, you may play anything. **Escape is trumps** on the climb: if any Escape card is played, the highest Escape card wins. Otherwise the highest card of the suit led wins. The winner takes the next Climb card and leads the next trick.
+- **The summit.** When the Climb row is empty, the direction flips. The banner changes, and six Brumby cards are dealt face up in a row, one for each descent trick. The twelve Brumby cards are +2 (five of them), +1 (three), Flint stones -1, two Wombat holes -2, and the Colt, worth +4.
+- **The descent: six tricks, lowest wins.** The player who won the last climb trick leads. The same rules, but the **lowest** card wins, and **Home is trumps**: if any Home card is played, the lowest Home card wins. Otherwise the lowest card of the suit led wins. The winner takes the next Brumby card, good or bad. There is no choice and no bidding: you keep what you win. The Muster is never trumps.
+- **Scoring.** Your score for a hand is the Climb cards and Brumby cards you took. Tricks themselves score nothing, and a hand can end below zero. The Brumby deck lasts two hands and is then shuffled again.
 - The highest total after the last hand wins. A tie goes to the most points in the last hand; if that is level too, the win is shared.
 
 The page has a How to play section with the same rules in more detail.
 
 ## What is in the game
 
-- 2 to 4 seats. Each seat can be a human or an Easy, Medium or Hard bot. Set every seat to a bot to watch a game.
-- Pass and play: with two or more humans on one device, a cover hides each hand between turns, and the Chase or Watch choice is made behind it so nobody sees it before the cards are turned.
+- 2 to 5 seats. Each seat can be a human or an Easy, Medium or Hard bot. Set every seat to a bot to watch a game.
+- Pass and play: with two or more humans on one device, a cover hides each hand between turns.
+- A banner shows which half of the hand you are in, the direction (highest or lowest wins) and the trump suit, with a strip that counts the twelve tricks. The Climb row and the Brumby row are on the table, with the next card to be won lit.
 - When you follow, a mark on each playable card shows whether it would win the trick as it stands, and every card you cannot play says why.
 - For learners, you play every card yourself, even when only one is legal. Tick "Play forced cards for me" on the setup screen to have those played automatically.
-- A reckoning after every hand shows what each player did and how each score was made: tricks, Brumby cards kept, the Chase cost and the hand total. The Mountain card, the Brumby row and each chaser's kept cards show the state of the hand as it goes.
+- A reckoning after every hand shows the Climb cards and Brumby cards each player took and how each score was made.
 - A local stats screen with CSV and JSON export. Results stay in your browser.
 - A built-in "report a problem" button (also Ctrl+Shift+B) that saves a JSON snapshot of the game as it stands, for bug reports. Nothing is sent automatically; it prepares an email to info@wombatgamefactory.com.
-- The live site uses Google Analytics behind a cookie-consent banner. It counts games started and finished, and for each finished game sends a short anonymous summary: number of players, the kind of seat that won (human, a bot level, or shared), the winning score and margin, whether the tiebreak was used, and how many hands nobody chased, how many chasers there were and what they kept. No names or free text are sent. Neither the banner nor Analytics loads on localhost.
+- The live site uses Google Analytics behind a cookie-consent banner. It counts games started and finished, and for each finished game sends a short anonymous summary: number of players, the kind of seat that won (human, a bot level, or shared), the winning score and margin, whether the tiebreak was used, and how many hands had the Colt in the row and how many hands ended below zero. No names or free text are sent. Neither the banner nor Analytics loads on localhost.
 
 ## Run it locally
 
@@ -48,13 +48,13 @@ Two URL options are handy while testing: `?seed=7` makes the deals repeatable, a
 npm test
 ```
 
-Runs every Node test suite: the engine's purity, the rules (one check per numbered rule), a replay of games recorded from a reference simulator written in Python, a smoke test that plays thousands of bot games, the game controller, the bots, the simulator, the stats store, the analytics whitelist and the interface helpers. It needs only Node.js.
+Runs every Node test suite: the engine's purity, the rules (one check per numbered rule), a replay of games recorded from a reference simulator written in Python, a smoke test that plays thousands of bot games at every player count, the game controller, the bots, the simulator, the stats store, the analytics whitelist and the interface helpers. It needs only Node.js.
 
 ```sh
 npm run test:browser
 ```
 
-Drives the real page in headless Chromium: full games against each bot level at 2 to 4 players, pass-and-play with the secret summit choices, the Mountain card, the Brumby row and the reckoning, the stats screen and exports, the bug reporter and several screen widths. This one needs [Playwright](https://playwright.dev) (`npm install -g playwright`, then `npx playwright install chromium`); the tests look for it in the global npm folder, or in the folder named by the `PLAYWRIGHT_PATH` environment variable. It takes several minutes, so it can be run in sections: `node tests/ui-browser.mjs --part=landing,human4` (the section names are listed at the top of `tests/ui-browser.mjs`).
+Drives the real page in headless Chromium: full games against each bot level at 2 to 5 players, pass-and-play, the banner, the Climb row and the Brumby row, the summit and the reckoning, the stats screen and exports, the bug reporter and several screen widths. This one needs [Playwright](https://playwright.dev) (`npm install -g playwright`, then `npx playwright install chromium`); the tests look for it in the global npm folder, or in the folder named by the `PLAYWRIGHT_PATH` environment variable. It takes several minutes, so it can be run in sections: `node tests/ui-browser.mjs --part=landing,human4` (the section names are listed at the top of `tests/ui-browser.mjs`).
 
 Two more scripts are for people preparing a release:
 
@@ -65,11 +65,11 @@ npm run sweep   # checks that nothing private or oversized is in the files that 
 
 ## The bots
 
-- **Easy** plays a random legal card and makes a random Chase or Watch choice.
-- **Medium** follows a set of rules of thumb for which card to play, valuing each descent trick by the Brumby card it wins, and decides whether to chase by playing out the rest of the hand on sampled deals.
-- **Hard** samples the cards it cannot see, plays each candidate move out over those samples, and picks the one with the best expected score margin over the best opponent. It runs in a Web Worker so the page never freezes.
+- **Easy** plays a random legal card.
+- **Medium** follows a set of rules of thumb for which card to play. It values each trick by the card it wins (it ducks the -1 Climb card and the Wombat holes, and goes for the Colt), and it saves its strongest card for the best prize still to come.
+- **Hard** samples the cards it cannot see, plays each candidate move out over those samples with Medium playing every seat, and picks the one with the best expected score margin over the best opponent. It runs in a Web Worker so the page never freezes.
 
-The simulator can also seat some fixed-policy players that the page does not offer, for example one that always chases and one that never does.
+The simulator can also seat a few fixed-policy players that the page does not offer, for example a plain "play what you would in any trick-taker" player.
 
 ## Simulations
 

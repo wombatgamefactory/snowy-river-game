@@ -26,7 +26,7 @@ export const CONTACT_EMAIL = 'info@wombatgamefactory.com';
 
 // The seat counts the game supports (also CONSTANTS.MIN_PLAYERS / MAX_PLAYERS in src/engine/rules.js and the
 // "Players" strip on the landing page).
-// 2 to 5 (v6 rules, Dean's decision 6, 13/11/2026): 5 players add the Muster suit.
+// 2 to 5 players (v6 rules): 5 players add the Muster suit.
 export const PLAYER_COUNTS = [2, 3, 4, 5];
 export const MAX_SEATS = 5;
 

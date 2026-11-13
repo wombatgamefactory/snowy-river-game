@@ -1,7 +1,7 @@
 // rules.js - constants and the (empty) VARIANTS table. Data only, plus resolveVariants(), rulesCode(),
 // deriveParams(), trumpFor() and directionFor().
 //
-// Snowy River, v6 rules (rule numbers R1.1 ... R12.4 in the comments are web-game-docs/rules-spec-v3.md):
+// Snowy River, v6 rules (the numbers R1.1 ... R12.4 in the comments are the numbered rules of the game):
 // a trick-taker for 2 to 5 players. SINGLE-NUMBER cards 1-12 in four suits (Escape, Climb, Descent, Home),
 // plus a fifth suit, the Muster, at 5 players only (never trumps). Every hand is 6 CLIMB tricks (highest
 // wins, Escape trumps; climb trick i takes the Climb card at position i of a face-up row of 6: 5 x +1 and

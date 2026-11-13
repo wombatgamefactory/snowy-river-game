@@ -800,16 +800,6 @@
   "source": "images/suit-icon-muster.png"
  },
  {
-  "id": "mob-marker",
-  "file": "mob-marker.webp",
-  "width": 256,
-  "height": 256,
-  "bytes": 7782,
-  "status": "real",
-  "what": "Mob marker (horse-head chess-piece style token, rendered preview of the 3D-printed piece), transparent",
-  "source": "3d-print/summit-marker-horse-v1-preview-front34.png"
- },
- {
   "id": "hero-wide",
   "file": "hero-wide.webp",
   "width": 1600,
@@ -866,7 +856,7 @@
   "height": 192,
   "bytes": 9224,
   "status": "real",
-  "what": "Seat 5 avatar: the Watch stockman, circular with ink ring",
+  "what": "Seat 5 avatar: a stockman, circular with ink ring",
   "source": "TTS/Snowy-River-Cards.png"
  },
  {
@@ -886,7 +876,7 @@
   "height": 512,
   "bytes": 9632,
   "status": "real",
-  "what": "Seamless 512 px table tile: Mountain card woodcut hatching mapped to a dark brown range, mirrored 2 x 2",
-  "source": "TTS/Snowy-River-Cards.png (Mountain card 0-7 side)"
+  "what": "Seamless 512 px table tile: woodcut hatching mapped to a dark brown range, mirrored 2 x 2",
+  "source": "TTS/Snowy-River-Cards.png"
  }
 ]

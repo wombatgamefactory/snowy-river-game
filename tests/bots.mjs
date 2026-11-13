@@ -1,7 +1,7 @@
 // bots.mjs - the bots (v6 rules): registry, determinism, no view mutation, only-the-view imports, legality
 // of every move at 2, 3, 4 and 5 players, Medium and the naive archetype decision-matched against the Python
-// simulator's own bots (tests/fixtures/bots-python-decisions.json, recorded from sim/snowy-river-sim-v6.py by
-// web-game-docs/conformance/make-bot-decisions-v3.py, which is kept with the design notes, not in this repo),
+// simulator's own bots (tests/fixtures/bots-python-decisions.json, recorded from the Python v6 simulator by a
+// script that is kept with the design notes, not in this repo),
 // Medium's habits on hand-built positions, Hard (search, the compact rollout checked against the real
 // engine, timing), and strength checks with counts and z-scores (Medium v Easy, Hard v Medium).
 // Semantics: PERMANENTLY GREEN. Exit 1 on any failure. `--full` runs the long strength budgets.

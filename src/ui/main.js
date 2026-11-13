@@ -25,7 +25,7 @@
 //
 //   info (sessionInfo): { seed, players, seats: [{ type, name }], names, humanSeats, rules,
 //     rulesCode, handNo, startedAt, state } where `state` is the live engine state: read-only.
-//   v6 payloads (engine-api-v3.md): onTrickEnd info.event is the 'trick-won' event ({ handNo, trickNo, half,
+//   v6 payloads: onTrickEnd info.event is the 'trick-won' event ({ handNo, trickNo, half,
 //     halfTrickNo, winner, card, byTrump, trump, direction, ledSuit, plays, climbTricks, descentTricks }); a trick is
 //     followed (not announced by a hook) by 'climb-card-taken' / 'brumby-taken' in the log. onHandEnd info.event is the
 //     'hand-ended' event and info.record the state.handLog entry ({ climbRow, climbRowValues, minusPosition,
