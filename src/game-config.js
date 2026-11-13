@@ -19,19 +19,19 @@ export const PUBLISH_URL = fill('https://www.wombatgamefactory.com/snowy-river-g
  *  older rules, so the game's own How to play is the only rules text. Empty on purpose; nothing links to it. */
 export const RULEBOOK_URL = '';
 /** Footer line under the setup form. */
-export const FOOTER_VERSION = 'Version 5 rules';
+export const FOOTER_VERSION = 'Version 6 rules';
 
 /** The public contact address for bug reports (never a personal address). */
 export const CONTACT_EMAIL = 'info@wombatgamefactory.com';
 
 // The seat counts the game supports (also CONSTANTS.MIN_PLAYERS / MAX_PLAYERS in src/engine/rules.js and the
 // "Players" strip on the landing page).
-// 2 to 4 only for now: the Muster suit for 5 players has no art yet.
-export const PLAYER_COUNTS = [2, 3, 4];
-export const MAX_SEATS = 4;
+// 2 to 5 (v6 rules, Dean's decision 6, 13/11/2026): 5 players add the Muster suit.
+export const PLAYER_COUNTS = [2, 3, 4, 5];
+export const MAX_SEATS = 5;
 
 /** Short blurb of the At-a-glance strip. */
-export const AT_A_GLANCE = { players: '2-4', minutes: '20-30', age: '10+' };
+export const AT_A_GLANCE = { players: '2-5', minutes: '20-30', age: '10+' };
 
 /** Prefix for localStorage keys and export file names. */
 export const STORE_PREFIX = GAME_SLUG;

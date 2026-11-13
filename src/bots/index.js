@@ -9,8 +9,9 @@
 //
 // Levels: 'easy' (random.js), 'medium' (medium.js, the game's heuristic), 'hard' (hard.js,
 // determinised Monte Carlo with Medium rollouts) and the simulator-only archetypes
-// (archetypes.js: always | never | random | nothing | naive | naive-random, offered: false; import them
-// with getBot(id) or list them with botLevels()).
+// (archetypes.js: naive | high | low, offered: false; import them with getBot(id) or list them with
+// botLevels()). v6 engine (T3, 13/11/2026): medium, hard and naive are placeholders that play like Easy
+// until task T4 writes them.
 
 import { randomBot } from './random.js';
 import { mediumBot } from './medium.js';

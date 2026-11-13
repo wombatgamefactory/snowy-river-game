@@ -1,8 +1,7 @@
 // controller.mjs - drives src/ui/controller.js in Node with scripted "human" choices:
 // a full 4-seat human-v-Easy game, a learner game (forced cards not auto-played), a 3-human
-// pass-and-play game (hand-off rule, including a cover between the humans' secret summit choices), an
-// all-bot game, a 2-seat game, refusals, the worker path (bot-worker.js message shape) and the bot
-// failure cap.
+// pass-and-play game (hand-off rule; v6 has no secret summit choice), an all-bot 5-seat game, a 2-seat
+// game, refusals, the worker path (bot-worker.js message shape) and the bot failure cap.
 // Semantics: PERMANENTLY GREEN. Exit 1 on any failure.
 
 import { createController, MAX_BOT_FAILURES } from '../src/ui/controller.js';
@@ -78,72 +77,54 @@ const newStats = () => ({ refusalMessages: 0, badAccept: 0, badRefuse: 0, turns:
   const ctl = createController({ seats: [{ type: 'human', name: 'Ann' }, { type: 'human', name: 'Bo' }, { type: 'easy' }, { type: 'human', name: 'Cy' }], seed: 'pp' });
   const rng = makeRng('pp');
   const stats = newStats();
-  let handoffs = 0; let leak = false; let guard = 0; let summitHandoffs = 0; let summitSelfCover = 0; let summitDecisions = 0; let summitCovered = 0; let choiceLeak = false; let lastSummitSeat = null;
+  let handoffs = 0; let leak = false; let guard = 0;
   while (!ctl.isFinished() && guard++ < 2000) {
     ctl.runBots();
     if (!ctl.isHumanTurn()) continue;
     const seat = ctl.toAct();
-    const atSummit = ctl.state.phase === 'summit';
-    if (atSummit) { summitDecisions++; if (ctl.needsHandoff()) summitCovered++; }
     if (ctl.needsHandoff()) {
       handoffs++;
-      if (atSummit && lastSummitSeat !== null && lastSummitSeat !== seat) summitHandoffs++;
-      // At the summit the player who still holds the device (they played the last climb card) is covered too: the
-      // cover is what tells everyone else to look away, so a hand-off for the seat already shown is right there.
-      if (ctl.shownSeat() === seat) { if (atSummit) summitSelfCover++; else leak = true; }
+      if (ctl.shownSeat() === seat) leak = true; // a hand-off is only for a new human
       ctl.reveal(seat);
     }
     if (ctl.needsHandoff() || ctl.shownSeat() !== seat) leak = true;
-    if (atSummit) {
-      const v = ctl.view(seat);
-      if (v.choices.some((c, s) => s !== seat && c !== null)) choiceLeak = true;
-      lastSummitSeat = seat;
-    } else lastSummitSeat = null;
+    if (ctl.state.phase === 'summit') leak = true; // v6: the summit is never a resting phase (R5.5)
     humanTurn(ctl, rng, stats);
   }
   check('pass-and-play: the game finishes', ctl.isFinished());
   check('pass-and-play: a hand-off happens before each new human\'s decision', handoffs > 20, `${handoffs}`);
-  check('pass-and-play: a hand is never shown before its owner confirms', !leak);
-  check('pass-and-play: each next human makes the secret summit choice behind a cover, and no other choice is in their view', summitHandoffs > 0 && !choiceLeak, `${summitHandoffs} summit hand-offs`);
-  check('pass-and-play: a summit chooser who already holds the device is still covered first', summitSelfCover > 0, `${summitSelfCover}`);
-  check('pass-and-play: EVERY human summit decision starts behind a cover (the first look at it asks for a hand-off)', summitDecisions > 6 && summitCovered === summitDecisions, `${summitCovered} of ${summitDecisions}`);
+  check('pass-and-play: a hand is never shown before its owner confirms; no summit pause (R5.5, R10.13)', !leak);
   check('pass-and-play: names from setup are used', ctl.names[0] === 'Ann' && ctl.log.some((l) => /Ann|Bo|Cy/.test(l.text)));
 }
 
-// ---------- two humans and a bot: the same player may choose first in two hands running ----------
+// ---------- two humans and a bot, 8 games: every human decision shows the right hand ----------
 {
-  let decisions = 0; let covered = 0; let sameSeatTwice = 0; let guardAll = 0; let wrongSeatShown = 0;
+  let wrongSeatShown = 0; let decisions = 0; let finished = 0;
   for (let seed = 1; seed <= 8; seed++) {
     const ctl = createController({ seats: [{ type: 'human', name: 'Ann' }, { type: 'human', name: 'Bo' }, { type: 'easy' }], seed: `pp2-${seed}` });
     const rng = makeRng(`pp2-${seed}`);
     const stats = newStats();
-    let prev = null; let guard = 0;
+    let guard = 0;
     while (!ctl.isFinished() && guard++ < 2000) {
       ctl.runBots();
       if (!ctl.isHumanTurn()) continue;
       const seat = ctl.toAct();
-      if (ctl.state.phase === 'summit') {
-        decisions++;
-        if (ctl.needsHandoff()) covered++;
-        const key = `${ctl.state.handNo}`;
-        if (prev && prev.seat === seat && prev.key !== key) sameSeatTwice++;
-        prev = { seat, key };
-      }
+      decisions++;
       if (ctl.needsHandoff()) ctl.reveal(seat);
       if (ctl.shownSeat() !== seat) wrongSeatShown++;
       humanTurn(ctl, rng, stats);
     }
-    guardAll += guard;
+    if (ctl.isFinished()) finished++;
   }
-  check('pass-and-play (2 humans + a bot, 8 games): every summit decision is covered, also when the same player chooses in the next hand', decisions > 30 && covered === decisions && wrongSeatShown === 0, `${covered} of ${decisions}, same seat in consecutive hands ${sameSeatTwice}, wrong seat shown ${wrongSeatShown}`);
+  check('pass-and-play (2 humans + a bot, 8 games): every game finishes and every decision shows the deciding human\'s hand', finished === 8 && decisions > 100 && wrongSeatShown === 0, `${wrongSeatShown} wrong of ${decisions}`);
 }
 
-// ---------- all bots, 4 seats (the most there are, R1.9) ----------
+// ---------- all bots, 5 seats (the most there are, R1.10) ----------
 {
-  const ctl = createController({ seats: Array.from({ length: 4 }, () => ({ type: 'easy' })), seed: 'bots' });
+  const ctl = createController({ seats: Array.from({ length: 5 }, () => ({ type: 'easy' })), seed: 'bots' });
   ctl.runBots();
-  check('all bots: the game plays to the end with no human input', ctl.isFinished() && ctl.state.rulesCode === 'std' && conservation(ctl.state).ok && ctl.state.handLog.length === 4);
-  check('controller: 5 seats are refused (2 to 4 players, R1.9)', (() => { try { createController({ seats: Array.from({ length: 5 }, () => ({ type: 'easy' })), seed: 1 }); return false; } catch { return true; } })());
+  check('all bots, 5 seats: the game plays to the end with no human input', ctl.isFinished() && ctl.state.rulesCode === 'std' && conservation(ctl.state).ok && ctl.state.handLog.length === 5);
+  check('controller: 6 seats are refused (2 to 5 players, R1.10)', (() => { try { createController({ seats: Array.from({ length: 6 }, () => ({ type: 'easy' })), seed: 1 }); return false; } catch { return true; } })());
   check('controller: a rules switch is refused (there are none)', (() => { try { createController({ seats: [{ type: 'easy' }, { type: 'easy' }], seed: 1, rules: { TRUMP: 'red' } }); return false; } catch { return true; } })());
   check('all bots: nobody\'s hand is shown', ctl.shownSeat() === null && !ctl.needsHandoff());
 }

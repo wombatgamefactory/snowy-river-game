@@ -5,14 +5,11 @@
 // legalActionsFromView (a bot's view, view.js) both call it and cannot disagree.
 // applyAction refuses through getActionBlockReason, which asks the same function.
 //
-// Actions (the acting seat is always state.toAct; actions carry no seat):
-//   { type: 'play', card }                         phase 'climb' or 'descent': a card to the trick
-//   { type: 'summit', choice: 'chase' | 'watch' }  phase 'summit': this seat's secret choice (R5)
+// The only action (R12.1; the acting seat is always state.toAct; actions carry no seat):
+//   { type: 'play', card }      phase 'climb' or 'descent': a card to the trick
 
 import { SUIT_NAMES, CARD_PHASES } from './rules.js';
-import { cardSuit, valueIn, cardName, listCardNames } from './cards.js';
-
-export const SUMMIT_CHOICES = ['chase', 'watch'];
+import { cardSuit, strength, cardName, listCardNames } from './cards.js';
 
 /** True for the phases in which a card is played. */
 export const isCardPhase = (phase) => CARD_PHASES.includes(phase);
@@ -35,12 +32,13 @@ export function legalCards(hand, ledSuit) {
 }
 
 /**
- * The strength of a played card in a trick (R4.4, R6.3): a trump scores 100 + its value in play, a card
- * of the led suit its value in play, anything else -1 (it can never win). The same key as the Python's.
+ * The strength of a played card in a trick (R4.4, R6.3): a trump scores 100 + its strength in the half, a
+ * card of the led suit its strength, anything else -1 (it can never win). Strength is the number on the
+ * climb and 13 - number on the descent (lowest wins), so this is the Python's key() exactly (D12).
  */
 export function trickKey(card, ledSuit, trump, half) {
   const s = cardSuit(card);
-  const v = valueIn(card, half);
+  const v = strength(card, half);
   if (s === trump) return 100 + v;
   if (s === ledSuit) return v;
   return -1;
@@ -48,8 +46,10 @@ export function trickKey(card, ledSuit, trump, half) {
 
 /**
  * The winner of a (possibly partial) trick (R4.4 to R4.6, R6.3 to R6.5): if any trump was played, the
- * highest trump; otherwise the highest card of the led suit, by the value that counts in this half.
- * A card replaces the best only when STRICTLY stronger, so a tie goes to the first card played (unreachable with one deck of unique cards). Null when no plays yet.
+ * highest trump on the climb / the lowest trump on the descent; otherwise the highest (climb) / lowest
+ * (descent) card of the led suit. A card replaces the best only when STRICTLY stronger, so a tie goes to the
+ * first card played (unreachable with unique cards). The Muster is never trumps (it is never `trump`).
+ * Null when no plays yet.
  * @param {{seat:number, card:string}[]} plays in play order
  * @param {string|null} ledSuit   (the first play's suit)
  * @param {'climb'|'descent'} half
@@ -77,14 +77,12 @@ export function trickWinner(plays, ledSuit, half, trump) {
  */
 function actionsFor(phase, hand, trick) {
   if (isCardPhase(phase)) return legalCards(hand, trick ? trick.ledSuit : null).map((card) => ({ type: 'play', card }));
-  if (phase === 'summit') return SUMMIT_CHOICES.map((choice) => ({ type: 'summit', choice })); // R12.2: never auto
   return [];
 }
 
 /** Every legal action for state.toAct; empty when nobody may act (R12.1). */
 export function getValidActions(state) {
-  if (state.toAct === null || state.phase === 'over' || state.phase === 'handEnd') return [];
-  if (state.phase === 'summit' && state.choices[state.toAct] !== null) return [];
+  if (state.toAct === null || !isCardPhase(state.phase)) return [];
   return actionsFor(state.phase, state.hands[state.toAct], state.trick);
 }
 
@@ -97,34 +95,22 @@ export { actionsFor as legalActionsFor };
  */
 export function getPlayBlockReason(state, seat, card) {
   if (state.phase === 'over') return 'The game is over.';
-  if (state.phase === 'summit') return 'At the summit everyone chooses Chase or Watch before another card is played.';
   if (!isCardPhase(state.phase)) return 'The hand is being scored.';
   if (seat !== state.toAct) return 'It is not your turn.';
   const hand = state.hands[seat];
-  const half = state.phase;
-  if (!hand.includes(card)) return `You do not hold ${typeof card === 'string' && card.includes('-') ? cardName(card, half) : JSON.stringify(card)}.`;
+  if (!hand.includes(card)) return `You do not hold ${typeof card === 'string' && /^[a-z]+-\d{1,2}$/.test(card) ? cardName(card) : JSON.stringify(card)}.`;
   const led = state.trick ? state.trick.ledSuit : null;
   const ok = playableCards(hand, led);
   if (ok.includes(card)) return null;
   const follow = hand.filter((c) => cardSuit(c) === led);
-  return `You must follow suit: ${SUIT_NAMES[led]} was led, and you hold ${listCardNames(follow, half)}.`;
+  return `You must follow suit: ${SUIT_NAMES[led]} was led, and you hold ${listCardNames(follow)}.`;
 }
 
 /** Why an action object is refused, or null. */
 export function getActionBlockReason(state, action) {
-  const okShape = action && ((action.type === 'play' && typeof action.card === 'string') || (action.type === 'summit' && SUMMIT_CHOICES.includes(action.choice)));
-  if (!okShape) {
-    return `Unknown action ${JSON.stringify(action)}; actions are { type: 'play', card } and { type: 'summit', choice: 'chase' | 'watch' }.`;
-  }
+  const okShape = action && action.type === 'play' && typeof action.card === 'string';
+  if (!okShape) return `Unknown action ${JSON.stringify(action)}; the only action is { type: 'play', card }.`;
   if (state.phase === 'over' || state.toAct === null) return 'The game is over.';
-  if (state.phase === 'summit') {
-    if (action.type !== 'summit') return 'At the summit: choose Chase or Watch.';
-    if (state.choices[state.toAct] !== null) return 'You have already chosen.';
-    return null;
-  }
-  if (isCardPhase(state.phase)) {
-    if (action.type !== 'play') return 'Play a card to the trick.';
-    return getPlayBlockReason(state, state.toAct, action.card);
-  }
+  if (isCardPhase(state.phase)) return getPlayBlockReason(state, state.toAct, action.card);
   return 'The hand is being scored.';
 }

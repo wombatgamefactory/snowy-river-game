@@ -5,23 +5,22 @@
 //
 // After the action, every decision that has exactly ONE legal option is applied at once and its
 // events carry `auto: true` (R4.10, R12.2): the only card of the led suit, the last card of each half.
-// The summit choice always has two options, so it is never auto-applied. Hand ends and the next deal
-// happen inside the same call, so one call can return the last trick, the scoring, the next deal and
-// even the game result. The UI walks those events (board.js).
+// The summit (R5.5), hand ends and the next deal happen inside the same call, so one call can return the
+// last climb trick, the summit, ... the scoring, the next deal and even the game result. The UI walks
+// those events (board.js).
 //
 // A completed trick (state.tricks, and handLog[h].tricks) is:
 //   { n (1..12 in the hand), half: 'climb'|'descent', halfTrickNo (1..6), phase (= half), leader, seats,
-//     ledSuit, trump, plays: [{ seat, card, offSuit, trump }], winner, winningCard, byTrump,
-//     prize (descent: the Brumby id at this trick's row position, else null),
-//     prizeTo ('kept' | 'discard' | null) }
+//     ledSuit, trump, direction ('highest'|'lowest'), plays: [{ seat, card, offSuit, trump }], winner,
+//     winningCard, byTrump, prize (the Climb card id on the climb, the Brumby id on the descent),
+//     prizeValue }
 //
 // Event types, in the order they can occur (fields where each is pushed below):
-//   game-started, hand-started, card-played, trick-won, marker-moved (climb),
-//   summit-opened, summit-chosen (no side!), summit-revealed, descent-started,
-//   brumby-kept | brumby-discarded (descent), hand-ended, brumby-reshuffled, game-over
+//   game-started, hand-started, card-played, trick-won, climb-card-taken (climb),
+//   summit-opened (after the 6th climb trick), brumby-taken (descent), hand-ended, brumby-reshuffled, game-over
 
-import { cardSuit, valueIn, sortCards, brumbyValue } from './cards.js';
-import { trumpFor } from './rules.js';
+import { cardSuit, cardNumber, brumbyValue, climbCardValue, sortCards, isBrumby } from './cards.js';
+import { trumpFor, directionFor } from './rules.js';
 import { isCardPhase, getActionBlockReason, getValidActions, trickWinner } from './legality.js';
 import { dealHand, reshuffleBrumbies } from './state.js';
 import { reckonHand, gameResult } from './scoring.js';
@@ -37,7 +36,7 @@ export function applyAction(state, action, opts = {}) {
   const reason = getActionBlockReason(state, action);
   if (reason !== null) throw new Error(reason);
   const events = opts.silent ? null : [];
-  doAction(state, action, events, false);
+  playCard(state, action.card, events, false);
   runForced(state, events);
   return events || [];
 }
@@ -52,13 +51,8 @@ function runForced(state, events) {
     if (isCardPhase(state.phase) && manual.includes(state.toAct)) return;
     const acts = getValidActions(state);
     if (acts.length !== 1) return;
-    doAction(state, acts[0], events, true);
+    playCard(state, acts[0].card, events, true);
   }
-}
-
-function doAction(state, action, events, auto) {
-  if (action.type === 'play') playCard(state, action.card, events, auto);
-  else if (action.type === 'summit') chooseAtSummit(state, action.choice, events);
 }
 
 // ---------- card play ----------
@@ -69,8 +63,8 @@ function playCard(state, card, events, auto) {
   const half = state.phase;
   const trump = trumpFor(state.params, half);
   if (state.trick === null) {
-    const halfTrickNo = half === 'descent' ? state.descentTrickNo + 1 : state.marker + 1;
-    state.trick = { n: state.trickNo + 1, half, halfTrickNo, phase: half, leader: seat, seats: Array.from({ length: n }, (_, k) => (seat + k) % n), ledSuit: null, trump, plays: [] };
+    const halfTrickNo = half === 'descent' ? state.descentTrickNo + 1 : state.climbTrickNo + 1;
+    state.trick = { n: state.trickNo + 1, half, halfTrickNo, phase: half, leader: seat, seats: Array.from({ length: n }, (_, k) => (seat + k) % n), ledSuit: null, trump, direction: directionFor(half), plays: [] };
   }
   const t = state.trick;
   state.hands[seat] = state.hands[seat].filter((c) => c !== card);
@@ -80,7 +74,7 @@ function playCard(state, card, events, auto) {
   const isTrump = cardSuit(card) === trump;
   t.plays.push({ seat, card, offSuit, trump: isTrump });
   if (events) {
-    events.push({ type: 'card-played', handNo: state.handNo, trickNo: t.n, half, halfTrickNo: t.halfTrickNo, phase: half, seat, card, value: valueIn(card, half), asLeader: t.plays.length === 1, setsSuit: lead, ledSuit: t.ledSuit, offSuit, trump: isTrump, auto });
+    events.push({ type: 'card-played', handNo: state.handNo, trickNo: t.n, half, halfTrickNo: t.halfTrickNo, phase: half, seat, card, value: cardNumber(card), asLeader: t.plays.length === 1, setsSuit: lead, ledSuit: t.ledSuit, offSuit, trump: isTrump, auto });
   }
   const i = t.seats.indexOf(seat);
   if (i < t.seats.length - 1) {
@@ -98,57 +92,62 @@ function resolveTrick(state, events) {
   const descent = t.half === 'descent';
   const win = trickWinner(t.plays, t.ledSuit, t.half, t.trump); // R4.4 / R6.3
   const w = win.seat;
+  // (3) the row card at this trick's position goes to the winner, good or bad (R4.8, R6.6)
+  const pos = descent ? state.descentTrickNo : state.climbTrickNo; // 0-based
+  const prize = descent ? state.row[pos] : state.climbRow[pos];
+  const prizeValue = descent ? brumbyValue(prize) : climbCardValue(prize);
   const record = {
     n: t.n, half: t.half, halfTrickNo: t.halfTrickNo, phase: t.half, leader: t.leader, seats: [...t.seats], ledSuit: t.ledSuit, trump: t.trump,
-    plays: t.plays.map((p) => ({ seat: p.seat, card: p.card, offSuit: p.offSuit, trump: p.trump })),
-    winner: w, winningCard: win.card, byTrump: win.byTrump, prize: null, prizeTo: null,
+    direction: t.direction, plays: t.plays.map((p) => ({ seat: p.seat, card: p.card, offSuit: p.offSuit, trump: p.trump })),
+    winner: w, winningCard: win.card, byTrump: win.byTrump, prize, prizeValue,
   };
-  // R4.7 the winner takes the trick into their one pile
+  // (2) R4.7 the winner takes the trick into their one pile
   state.piles[w].push(...t.plays.map((p) => p.card));
   state.trick = null;
   state.trickNo++;
   m.tricks++;
   if (win.byTrump) m.trumpWins++;
+  state.tricks.push(record);
   const trickEvent = () => ({
     type: 'trick-won', handNo: state.handNo, trickNo: record.n, half: t.half, halfTrickNo: t.halfTrickNo, phase: t.half, winner: w, card: win.card,
-    value: valueIn(win.card, t.half), ledSuit: record.ledSuit, trump: t.trump, byTrump: win.byTrump, plays: record.plays.map((p) => ({ ...p })),
-    climbTricks: [...state.climbTricks], descentTricks: [...state.descentTricks],
+    value: cardNumber(win.card), ledSuit: record.ledSuit, trump: t.trump, direction: t.direction, byTrump: win.byTrump,
+    plays: record.plays.map((p) => ({ ...p })), climbTricks: [...state.climbTricks], descentTricks: [...state.descentTricks],
   });
 
   if (!descent) {
     state.climbTricks[w]++;
     m.climbTricks++;
-    const from = state.marker;
-    state.marker++; // R4.8 one step per climb trick
-    state.tricks.push(record);
-    const summit = state.marker >= P.climbTricks; // R4.9
+    state.climbRow[pos] = null;
+    state.climbCards[w].push(prize);
+    m.climbValueSum += prizeValue;
+    if (prizeValue < 0) m.minusBySeat[w]++;
+    state.climbTrickNo++;
     if (events) {
       events.push(trickEvent());
-      events.push({ type: 'marker-moved', handNo: state.handNo, trickNo: record.n, from, to: state.marker, summit, climbTricks: P.climbTricks });
+      events.push({
+        type: 'climb-card-taken', handNo: state.handNo, trickNo: record.n, halfTrickNo: t.halfTrickNo, position: pos + 1, winner: w, card: prize, value: prizeValue,
+        climbCards: [...state.climbCards[w]], climbValue: state.climbCards[w].reduce((a, id) => a + climbCardValue(id), 0),
+      });
     }
     state.leader = w; // the winner leads the next trick (R4.7), and the descent after the summit (R6.1)
-    if (summit) { openSummit(state, w, events); return; }
+    if (state.climbTrickNo >= P.climbTricks) { openSummit(state, w, events); return; } // R4.9
     state.toAct = w;
     return;
   }
 
-  // R6.6 the descent: the trick's row card goes to a chaser's kept pile or to the discard
+  // R6.6 the descent: the trick's Brumby card goes to the winner, always
   state.descentTricks[w]++;
   m.descentTricks++;
-  const pos = state.descentTrickNo; // 0-based row position
-  const prize = state.row[pos];
   state.row[pos] = null;
-  const chaser = state.choices[w] === 'chase';
-  if (chaser) { state.kept[w].push(prize); m.keptCards++; m.keptValue += brumbyValue(prize); } else { state.brumbyDiscard.push(prize); m.sentOff++; }
-  record.prize = prize;
-  record.prizeTo = chaser ? 'kept' : 'discard';
+  state.kept[w].push(prize);
+  if (prize === 'colt') m.coltBySeat[w]++;
   state.descentTrickNo++;
-  state.tricks.push(record);
   if (events) {
     events.push(trickEvent());
-    const base = { handNo: state.handNo, trickNo: record.n, halfTrickNo: t.halfTrickNo, position: pos + 1, winner: w, card: prize, value: brumbyValue(prize) };
-    if (chaser) events.push({ type: 'brumby-kept', ...base, kept: [...state.kept[w]], keptValue: state.kept[w].reduce((a, id) => a + brumbyValue(id), 0) });
-    else events.push({ type: 'brumby-discarded', ...base, discardCount: state.brumbyDiscard.length });
+    events.push({
+      type: 'brumby-taken', handNo: state.handNo, trickNo: record.n, halfTrickNo: t.halfTrickNo, position: pos + 1, winner: w, card: prize, value: prizeValue,
+      kept: [...state.kept[w]], keptValue: state.kept[w].reduce((a, id) => a + brumbyValue(id), 0),
+    });
   }
   if (state.descentTrickNo >= P.descentTricks) { endHand(state, events); return; } // R9.1 (4)
   state.leader = w; // R6.7
@@ -157,7 +156,7 @@ function resolveTrick(state, events) {
 
 // ---------- the summit ----------
 
-/** Takes the hand's row from the deck: the fixed row of the test hook, else the top 6 (R5.4). */
+/** Takes the hand's row from the deck: the fixed row of the test hook, else the top 6 (R5.3). */
 function dealRow(state) {
   const P = state.params;
   const fixed = state.deals && state.deals[state.handNo] && state.deals[state.handNo].row ? state.deals[state.handNo].row : null;
@@ -165,7 +164,7 @@ function dealRow(state) {
   if (!fixed) return state.brumbyDeck.splice(0, P.rowSize);
   const row = [];
   for (const want of fixed) {
-    const i = typeof want === 'number' ? state.brumbyDeck.findIndex((id) => brumbyValue(id) === want) : state.brumbyDeck.indexOf(want);
+    const i = typeof want === 'number' ? state.brumbyDeck.findIndex((id) => brumbyValue(id) === want) : (isBrumby(want) ? state.brumbyDeck.indexOf(want) : -1);
     if (i < 0) throw new Error(`Fixed row of hand ${state.handNo}: ${JSON.stringify(want)} is not in the Brumby deck (${state.brumbyDeck.join(' ')})`);
     row.push(state.brumbyDeck.splice(i, 1)[0]);
   }
@@ -173,16 +172,14 @@ function dealRow(state) {
 }
 
 /**
- * R5.1 to R5.4: after the 6th climb trick everyone's hand turns round, the Mountain turns (Home is
- * trumps), the row is dealt; then one secret choice per seat, starting with the winner of the last
- * climb trick (R5.8).
+ * R5.1 to R5.5: after the 6th climb trick, in one step: lowest wins and Home is trumps from now on, the
+ * top 6 Brumby cards are laid face up, and the winner of the last climb trick leads the descent (R6.1).
+ * No decision is asked of anyone.
  */
 function openSummit(state, lastWinner, events) {
-  const n = state.n;
   const m = state.measures;
-  state.phase = 'summit';
-  state.handsTurned = true; // R5.2
-  state.hands = state.hands.map((h) => sortCards(h, 'descent'));
+  state.phase = 'summit'; // never rests here: set for the length of this function only
+  state.hands = state.hands.map((h) => sortCards(h, 'descent')); // R1.4 display order for the descent
   const fresh = state.freshDeck;
   state.row = dealRow(state);
   state.rowDealt = [...state.row];
@@ -190,64 +187,34 @@ function openSummit(state, lastWinner, events) {
   state.rowFresh = fresh;
   state.topHomeSeat = topHomeOf(state);
   const values = state.row.map(brumbyValue);
-  m.rowValueSum += values.reduce((a, b) => a + b, 0);
+  const rowValue = values.reduce((a, b) => a + b, 0);
+  m.rowValueSum += rowValue;
   if (state.row.includes('colt')) m.coltRows++;
-  state.choices = Array.from({ length: n }, () => null);
-  state.choiceOrder = Array.from({ length: n }, (_, k) => (lastWinner + k) % n);
-  state.revealed = false;
+  state.phase = 'descent';
   state.leader = lastWinner; // R6.1
-  state.toAct = state.choiceOrder[0];
+  state.toAct = lastWinner;
   if (events) {
     events.push({
-      type: 'summit-opened', handNo: state.handNo, trickNo: state.trickNo, climbTricks: [...state.climbTricks], trump: state.params.trumpDescent,
-      row: [...state.row], rowValues: values, rowValue: values.reduce((a, b) => a + b, 0), colt: state.row.includes('colt'),
-      deckCount: state.brumbyDeck.length, freshDeck: fresh, chaseCost: state.params.chaseCost, order: [...state.choiceOrder], leader: lastWinner,
+      type: 'summit-opened', handNo: state.handNo, trickNo: state.trickNo, climbTricks: [...state.climbTricks], trump: state.params.trumpDescent, direction: 'lowest',
+      row: [...state.row], rowValues: values, rowValue, colt: state.row.includes('colt'), deckCount: state.brumbyDeck.length, freshDeck: fresh, leader: lastWinner,
     });
   }
-}
-
-function chooseAtSummit(state, choice, events) {
-  const seat = state.toAct;
-  state.choices[seat] = choice;
-  const chosen = state.choices.filter((c) => c !== null).length;
-  // The event names the seat but NEVER the side: it goes to every viewer (R5.8, R10.6).
-  if (events) events.push({ type: 'summit-chosen', handNo: state.handNo, seat, chosen, of: state.n });
-  const next = state.choiceOrder.find((s) => state.choices[s] === null);
-  if (next !== undefined) { state.toAct = next; return; }
-  revealChoices(state, events);
-}
-
-/** R5.9 every choice is shown at once; then the descent, always (R5.10). */
-function revealChoices(state, events) {
-  const n = state.n;
-  const m = state.measures;
-  state.revealed = true;
-  const chasers = [];
-  const watchers = [];
-  for (let s = 0; s < n; s++) (state.choices[s] === 'chase' ? chasers : watchers).push(s);
-  m.chaserCounts[chasers.length]++;
-  if (chasers.length === 0) m.nobodyChased++;
-  for (const s of chasers) m.chasesBySeat[s]++;
-  if (events) events.push({ type: 'summit-revealed', handNo: state.handNo, choices: [...state.choices], chasers, watchers, chaseCost: state.params.chaseCost });
-  state.phase = 'descent';
-  state.toAct = state.leader; // R6.1
-  if (events) events.push({ type: 'descent-started', handNo: state.handNo, leader: state.leader, chasers, trump: state.params.trumpDescent });
 }
 
 // ---------- the end of a hand (R9.3) ----------
 
 /**
- * The seat holding the Home card with the highest descent value (the lowest climb value) among the cards
- * in hand at the summit, or null if nobody holds a Home card (R7.7; the Python's "top Home holder").
+ * The seat holding the lowest-numbered Home card among the cards in hand at the summit, or null if nobody
+ * holds a Home card then (R7.6 `topHomeSeat`; the Python's "top Home holder", D9).
  */
 function topHomeOf(state) {
   let best = null;
-  let bestV = Infinity;
+  let bestN = Infinity;
   state.hands.forEach((h, s) => {
     for (const c of h) {
       if (cardSuit(c) !== state.params.trumpDescent) continue;
-      const v = valueIn(c, 'climb');
-      if (v < bestV) { bestV = v; best = s; }
+      const v = cardNumber(c);
+      if (v < bestN) { bestN = v; best = s; }
     }
   });
   return best;
@@ -260,39 +227,42 @@ function endHand(state, events) {
   state.phase = 'handEnd';
   state.toAct = null;
 
-  // 1. score every seat (R7) and add to the pad
+  // 1. score every seat (R7) and 2. add to the pad
   const rk = reckonHand(state);
   for (let s = 0; s < n; s++) state.totals[s] += rk.scores[s];
-  const chaserSeats = state.choices.map((c, s) => (c === 'chase' ? s : -1)).filter((s) => s >= 0);
-  m.chaseCostPaid += chaserSeats.length * P.chaseCost;
-  const coltTrick = state.rowDealt.indexOf('colt');
-  const coltRec = coltTrick >= 0 ? state.tricks.find((t) => t.prize === 'colt') : null;
-  if (coltRec && coltRec.prizeTo === 'kept') m.coltKept++;
+  for (const sc of rk.scores) if (sc < 0) m.negativeHands++;
+  const climbValues = state.climbRowDealt.map(climbCardValue);
+  const minusIdx = climbValues.indexOf(-1);
+  const minusRec = minusIdx >= 0 ? state.tricks.find((t) => t.half === 'climb' && t.halfTrickNo === minusIdx + 1) : null;
+  const coltIdx = state.rowDealt.indexOf('colt');
+  const coltRec = coltIdx >= 0 ? state.tricks.find((t) => t.half === 'descent' && t.prize === 'colt') : null;
   const values = state.rowDealt.map(brumbyValue);
   const rec = {
     handNo: state.handNo,
     dealer: state.dealer,
     firstLeader: (state.dealer + 1) % n,
     descentLeader: state.tricks.find((t) => t.half === 'descent').leader,
-    choices: [...state.choices],
-    chasers: chaserSeats.length,
-    chaserSeats,
     climbTricks: [...state.climbTricks],
     descentTricks: [...state.descentTricks],
     trickCounts: state.climbTricks.map((c, s) => c + state.descentTricks[s]),
+    climbRow: [...state.climbRowDealt],
+    climbRowValues: climbValues,
+    minusPosition: minusIdx >= 0 ? minusIdx + 1 : null,
+    minusWinner: minusRec ? minusRec.winner : null,
+    climbCards: state.climbCards.map((k) => [...k]),
+    climbValues: rk.breakdown.map((b) => b.climbValue),
     kept: state.kept.map((k) => [...k]),
     keptValues: rk.breakdown.map((b) => b.keptValue),
-    costs: rk.breakdown.map((b) => b.cost),
     scores: rk.scores,
     breakdown: rk.breakdown,
     row: [...state.rowDealt],
     rowValues: values,
     rowValue: values.reduce((a, b) => a + b, 0),
-    colt: coltTrick >= 0,
-    coltTrick: coltTrick >= 0 ? coltTrick + 1 : null,
+    colt: coltIdx >= 0,
+    coltTrick: coltIdx >= 0 ? coltIdx + 1 : null,
     coltWinner: coltRec ? coltRec.winner : null,
-    coltKept: coltRec ? coltRec.prizeTo === 'kept' : false,
     topHomeSeat: state.topHomeSeat,
+    home1Seat: state.home1Seat,
     reshuffled: state.rowFresh === true,
     totalsAfter: [...state.totals],
     tricks: state.tricks,
@@ -304,13 +274,15 @@ function endHand(state, events) {
     events.push({ type: 'hand-ended', ...JSON.parse(JSON.stringify(summary)), totals: [...state.totals] });
   }
 
-  // 2. every Brumby card of the hand goes to the discard (R8.3); the row is already empty (R6.6)
+  // 3. every Brumby card of the hand goes to the discard (R8.3); the Climb cards are gathered (R8.8)
   for (let s = 0; s < n; s++) { state.brumbyDiscard.push(...state.kept[s]); state.kept[s] = []; }
   for (const id of state.row) if (id !== null) state.brumbyDiscard.push(id);
   state.row = [];
+  state.climbRow = [];
+  state.climbCards = state.climbCards.map(() => []);
   state.tricks = [];
 
-  // 3. next hand, or the end of the game
+  // 4. next hand, or the end of the game
   state.handNo++;
   if (state.handNo >= P.handsPerGame) {
     state.phase = 'over';
@@ -320,5 +292,5 @@ function endHand(state, events) {
     return;
   }
   if (state.brumbyDeck.length < P.reshuffleBelow) reshuffleBrumbies(state, events); // R8.4, only if another hand follows
-  dealHand(state, events); // R2.5 everything gathered and reshuffled
+  dealHand(state, events); // R2.5 everything gathered and reshuffled; R3.5 a new Climb row
 }

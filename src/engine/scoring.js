@@ -1,34 +1,30 @@
 // scoring.js - hand scores (R7) and the game result: totals, ranking, the last-hand tiebreak, shared
 // wins (R9.4 to R9.8).
 //
-//   watcher   tricks (1 point each, climb and descent alike)                     R7.2
-//   chaser    tricks + the values of the Brumby cards kept - the chase cost      R7.3
-//             (3 at 2 players, 2 at 3-4; paid even with no tricks; scores may be negative, R7.4)
+//   every seat   the values of the Climb cards taken + the values of the Brumby cards taken   R7.1
+//                tricks themselves score nothing (R7.2); scores may be negative (R7.3)
 // Highest total wins; tied -> the tied player with the most points in the last hand; still tied -> a
 // shared win (R9.5, R9.6).
 
-import { brumbyValue } from './cards.js';
+import { brumbyValue, climbCardValue } from './cards.js';
 
 /**
  * The scoring of the hand that has just ended (R7).
- * @param {object} state  at the moment the hand ends (choices revealed, counts and kept piles final)
+ * @param {object} state  at the moment the hand ends (counts, Climb and Brumby piles final)
  * @returns {{ scores:number[], breakdown:object[] }}
- *   breakdown[s]: { seat, choice, climbTricks, descentTricks, tricks, trickPoints, kept, keptValue, cost, score }
+ *   breakdown[s]: { seat, climbTricks, descentTricks, tricks, climbCards, climbValue, kept, keptValue, score }
  */
 export function reckonHand(state) {
   const n = state.n;
-  const P = state.params;
   const breakdown = [];
   for (let s = 0; s < n; s++) {
-    const choice = state.choices[s];
     const climb = state.climbTricks[s];
     const descent = state.descentTricks[s];
-    const tricks = climb + descent;
-    const trickPoints = tricks * P.trickPoints;
+    const climbCards = [...state.climbCards[s]];
+    const climbValue = climbCards.reduce((a, id) => a + climbCardValue(id), 0);
     const kept = [...state.kept[s]];
     const keptValue = kept.reduce((a, id) => a + brumbyValue(id), 0);
-    const cost = choice === 'chase' ? P.chaseCost : 0;
-    breakdown.push({ seat: s, choice, climbTricks: climb, descentTricks: descent, tricks, trickPoints, kept, keptValue, cost, score: trickPoints + keptValue - cost });
+    breakdown.push({ seat: s, climbTricks: climb, descentTricks: descent, tricks: climb + descent, climbCards, climbValue, kept, keptValue, score: climbValue + keptValue });
   }
   return { scores: breakdown.map((b) => b.score), breakdown };
 }

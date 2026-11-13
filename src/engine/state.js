@@ -1,4 +1,4 @@
-// state.js - createGame / startGame, dealing a hand, the Brumby deck, and cloneState.
+// state.js - createGame / startGame, dealing a hand (with the Climb row), the Brumby deck, and cloneState.
 //
 // SERIALISABILITY IS LOAD-BEARING: every state survives JSON.parse(JSON.stringify(state))
 // unchanged. Plain JSON only, null never undefined, no functions or class instances.
@@ -6,21 +6,23 @@
 // Seats are 0..n-1 clockwise; "left of X" is (X + 1) mod n. Who is human or bot is a UI
 // concern and is NOT in the engine state. Everything "per player" is an array indexed by seat.
 //
-// The state shape (each field is described where it is created, in startGame below):
-//   kind 'game', schema 2, seed, n, rules, params, rulesCode, rng, deals, manualSeats,
+// The state shape, schema 3 (each field is described where it is created, in startGame below; the
+// contract for the bot and UI workers is web-game-docs/engine-api-v3.md):
+//   kind 'game', schema 3, seed, n, rules, params, rulesCode, rng, deals, manualSeats,
 //   firstDealer, dealer, handNo,
-//   phase 'climb' | 'summit' | 'descent' | 'handEnd' | 'over', toAct, leader, handsTurned,
-//   hands, out, piles, climbTricks, descentTricks, marker, trickNo, descentTrickNo, trick, tricks,
-//   choices, choiceOrder, revealed,
-//   brumbyDeck, brumbyDiscard, freshDeck, row, rowDealt, rowFresh, topHomeSeat, kept,
-//   handLog, totals, measures, result.
+//   phase 'climb' | 'descent' | 'handEnd' (transient) | 'over', toAct, leader,
+//   hands, out, piles, climbTricks, descentTricks, trickNo, climbTrickNo, descentTrickNo, trick, tricks,
+//   climbRow, climbRowDealt, climbCards,
+//   brumbyDeck, brumbyDiscard, freshDeck, row, rowDealt, rowFresh, kept,
+//   topHomeSeat, home1Seat, handLog, totals, measures, result.
 //
 // 'handEnd' is a transient phase: it is set while a hand is scored inside applyAction. A state returned
-// by applyAction is never in 'handEnd': it is the next hand's 'climb', or 'over'.
+// by applyAction is never in 'handEnd': it is the next hand's 'climb', or 'over'. There is no 'summit'
+// phase a state rests in (R5.5): the summit is one step inside applyAction.
 
 import { CONSTANTS, resolveVariants, rulesCode, deriveParams } from './rules.js';
 import { makeRng, rngInt, shuffle } from './rng.js';
-import { fullDeck, sortCards, isCard, brumbyDeck, isBrumby } from './cards.js';
+import { fullDeck, sortCards, brumbyDeck, isBrumby, climbCardDeck, climbCardValue, isClimbCard } from './cards.js';
 
 const filled = (n, f) => Array.from({ length: n }, f);
 
@@ -32,31 +34,45 @@ export function emptyMeasures(n) {
     climbTricks: 0, // completed climb tricks
     descentTricks: 0, // completed descent tricks
     trumpWins: 0, // tricks won by a trump that was not the led suit
-    chaserCounts: filled(n + 1, () => 0), // hands by number of chasers, index 0..n
-    nobodyChased: 0, // hands in which everybody watched (the descent is still played, R5.10)
-    chasesBySeat: filled(n, () => 0),
-    chaseCostPaid: 0, // chase cost paid, summed over chasers and hands
-    keptCards: 0, // Brumby cards kept by chasers
-    keptValue: 0, // their values, summed
-    sentOff: 0, // row cards won by a watcher (sent to the discard)
-    rowValueSum: 0, // sum of every row's value
-    coltRows: 0, // rows with the Colt in them
-    coltKept: 0, // ... in which a chaser kept it
+    climbValueSum: 0, // Climb card values taken, summed (always 4 a hand)
+    rowValueSum: 0, // sum of every Brumby row's value
+    coltRows: 0, // Brumby rows with the Colt in them
+    minusBySeat: filled(n, () => 0), // the -1 Climb card taken, by seat
+    coltBySeat: filled(n, () => 0), // the Colt taken, by seat
+    negativeHands: 0, // seat-hands that scored below zero
     reshuffles: 0, // fresh shuffles of all 12 Brumby cards (the first deck of the game included)
   };
+}
+
+/** Resolves a fixed row (ids or values) against a pool of ids, removing what it takes. Throws when it cannot. */
+function takeFixed(pool, wanted, valueOf, isId, what) {
+  const out = [];
+  for (const want of wanted) {
+    const i = typeof want === 'number' ? pool.findIndex((id) => valueOf(id) === want) : (isId(want) ? pool.indexOf(want) : -1);
+    if (i < 0) throw new Error(`${what}: ${JSON.stringify(want)} is not available (${pool.join(' ')})`);
+    out.push(pool.splice(i, 1)[0]);
+  }
+  return out;
 }
 
 function checkDeal(deal, state) {
   const { n, params } = state;
   const k = params.handSize;
-  if (!deal || !Array.isArray(deal.hands) || deal.hands.length !== n || deal.hands.some((h) => !Array.isArray(h) || h.length !== k)) {
-    throw new Error(`A fixed deal needs ${n} hands of ${k} cards`);
+  if (!deal || typeof deal !== 'object') throw new Error('A fixed deal must be an object { hands?, climbRow?, row? }');
+  if (deal.hands !== undefined && deal.hands !== null) {
+    if (!Array.isArray(deal.hands) || deal.hands.length !== n || deal.hands.some((h) => !Array.isArray(h) || h.length !== k)) {
+      throw new Error(`A fixed deal needs ${n} hands of ${k} cards`);
+    }
+    const all = deal.hands.flat();
+    const deck = new Set(fullDeck(n));
+    if (all.some((c) => !deck.has(c))) throw new Error(`A fixed deal holds a card that is not in the ${n}-player deck`);
+    if (new Set(all).size !== all.length) throw new Error('A fixed deal contains a card twice');
   }
-  const all = deal.hands.flat();
-  if (all.some((c) => !isCard(c))) throw new Error('A fixed deal holds a card that is not in the deck');
-  if (new Set(all).size !== all.length) throw new Error('A fixed deal contains a card twice');
-  if (deal.row !== undefined && deal.row !== null) {
-    if (!Array.isArray(deal.row) || deal.row.length !== params.rowSize) throw new Error(`A fixed row needs ${params.rowSize} Brumby cards (ids or values)`);
+  for (const key of ['row', 'climbRow']) {
+    if (deal[key] !== undefined && deal[key] !== null) {
+      const size = key === 'row' ? params.rowSize : params.climbTricks;
+      if (!Array.isArray(deal[key]) || deal[key].length !== size) throw new Error(`A fixed ${key} needs ${size} cards (ids or values)`);
+    }
   }
 }
 
@@ -76,8 +92,10 @@ export function reshuffleBrumbies(state, events, announce = true) {
 
 /**
  * Deals hand `state.handNo` (R2.3, R2.5, R2.6, R3): sets the dealer and first leader, gathers and
- * shuffles all 48 cards, deals 12 each, resets the marker, the piles, the row and the summit choices.
- * The Brumby deck and discard and the scores carry over (R8.1). Pushes an event when `events` is an array.
+ * shuffles all 48 (60) cards, deals 12 each, then shuffles the six Climb cards and lays them face up
+ * (R3.5). The Brumby deck and discard and the scores carry over (R8.1). Pushes an event when `events` is
+ * an array. RNG order: the deal shuffle (unless the hook fixes the hands), then the Climb row shuffle
+ * (unless the hook fixes the Climb row) - the Python's order (spec 13.1).
  */
 export function dealHand(state, events) {
   const { n, params } = state;
@@ -88,28 +106,34 @@ export function dealHand(state, events) {
 
   const fixed = state.deals && state.deals[h] ? state.deals[h] : null;
   let packets;
-  if (fixed) {
-    checkDeal(fixed, state);
+  if (fixed) checkDeal(fixed, state);
+  if (fixed && fixed.hands) {
     packets = fixed.hands.map((x) => [...x]);
     const dealt = new Set(packets.flat());
-    state.out = fullDeck().filter((c) => !dealt.has(c));
+    state.out = fullDeck(n).filter((c) => !dealt.has(c));
   } else {
     // R3.4 shuffle the whole deck, deal 12 each from the seat left of the dealer; the rest are out unseen.
-    const deck = shuffle(state.rng, fullDeck());
+    const deck = shuffle(state.rng, fullDeck(n));
     packets = filled(n, () => []);
     for (let i = 0; i < n; i++) packets[(state.dealer + 1 + i) % n] = deck.slice(i * k, (i + 1) * k);
     state.out = deck.slice(n * k);
   }
   state.out = sortCards(state.out);
-  state.hands = packets.map((p) => sortCards(p)); // R3.3 picked up climb side up
-  state.handsTurned = false;
+  state.hands = packets.map((p) => sortCards(p, 'climb'));
+  state.home1Seat = state.hands.findIndex((hd) => hd.includes('home-1'));
+  if (state.home1Seat < 0) state.home1Seat = null; // out unseen (2-3 players)
+
+  // R3.5 the six Climb cards shuffled and laid face up, every hand
+  const climbRow = fixed && fixed.climbRow
+    ? takeFixed(climbCardDeck(), fixed.climbRow, climbCardValue, isClimbCard, `Fixed Climb row of hand ${h}`)
+    : shuffle(state.rng, climbCardDeck());
+  state.climbRow = [...climbRow];
+  state.climbRowDealt = [...climbRow];
+  state.climbCards = filled(n, () => []);
+
   state.piles = filled(n, () => []);
   state.climbTricks = filled(n, () => 0);
   state.descentTricks = filled(n, () => 0);
-  state.marker = 0; // R4.8 climb tricks played, 0..6
-  state.choices = filled(n, () => null);
-  state.choiceOrder = [];
-  state.revealed = false;
   state.row = [];
   state.rowDealt = [];
   state.rowFresh = false;
@@ -118,14 +142,17 @@ export function dealHand(state, events) {
   state.trick = null;
   state.tricks = [];
   state.trickNo = 0;
+  state.climbTrickNo = 0;
   state.descentTrickNo = 0;
   state.phase = 'climb'; // R4.1
   state.toAct = state.leader;
   if (events) {
+    const values = state.climbRowDealt.map(climbCardValue);
     events.push({
       type: 'hand-started', handNo: h, dealer: state.dealer, leader: state.leader, handSize: k, handsPerGame: params.handsPerGame,
-      outCount: state.out.length, trump: params.trumpClimb, deckCount: state.brumbyDeck.length, discardCount: state.brumbyDiscard.length,
-      freshDeck: state.freshDeck,
+      outCount: state.out.length, trump: params.trumpClimb, direction: 'highest',
+      climbRow: [...state.climbRowDealt], climbRowValues: values, minusPosition: values.indexOf(-1) + 1,
+      deckCount: state.brumbyDeck.length, discardCount: state.brumbyDiscard.length, freshDeck: state.freshDeck,
     });
   }
 }
@@ -133,16 +160,17 @@ export function dealHand(state, events) {
 /**
  * A new game, dealt and ready for the first decision, plus the events of the start.
  * @param {object} opts
- * @param {number|string} opts.seed       drives the first dealer (if random), the Brumby shuffles and every deal
- * @param {number} opts.players           2 to 4 (R1.9: anything else throws)
+ * @param {number|string} opts.seed       drives the first dealer (if random), the Brumby shuffles, every deal and Climb row
+ * @param {number} opts.players           2 to 5 (R1.10: anything else throws)
  * @param {object} [opts.rules]           variant overrides: there are none, so any name throws
  * @param {number|null} [opts.firstDealer] seat of the first dealer; default drawn from the seed (R2.2)
- * @param {Array<{hands: string[][], row?: (string|number)[]}|null>|null} [opts.deals]
- *        TEST HOOK (replays, fixtures): fixed deals by hand index. `hands` by seat (12 card ids each).
- *        `row` (optional) fixes that hand's Brumby row, left to right: each entry a Brumby id, or a value
- *        (+2, +1, -1, -2, +4) meaning the first card of that value still in the deck. The row's cards are
- *        taken out of the deck as it stands (the deck keeps its persistence and reshuffle rules), so a
- *        row the deck cannot supply throws. Hands without an entry are shuffled from the seed.
+ * @param {Array<{hands?: string[][], climbRow?: (string|number)[], row?: (string|number)[]}|null>|null} [opts.deals]
+ *        TEST HOOK (replays, fixtures): fixed deals by hand index. `hands` by seat (12 card ids each; omitted =
+ *        shuffled). `climbRow` (optional) fixes that hand's Climb row, left to right: 6 entries, each a Climb
+ *        id or a value (+1 / -1 = the next unused Climb card of that value). `row` (optional) fixes that hand's
+ *        Brumby row: each entry a Brumby id or a value (+2, +1, -1, -2, +4 = the first card of that value still
+ *        in the deck); it is taken out of the deck as it stands at the summit (persistence and reshuffles still
+ *        apply), so a row the deck cannot supply throws. Hands without an entry are shuffled from the seed.
  * @param {string[]|null} [opts.brumbyDeck] TEST HOOK: the game's first Brumby deck order (all 12 ids,
  *        top first) instead of a shuffle. Later reshuffles use the seed.
  * @param {number[]} [opts.manualSeats] seats whose single-option card plays are NOT auto-applied
@@ -172,49 +200,49 @@ export function startGame(opts = {}) {
 
   const state = {
     kind: 'game',
-    schema: 2,
+    schema: 3,
     seed: String(seed),
     n,
     rules, // {} : no switches
-    params, // deriveParams(): hand size, tricks per half, trumps, chase cost ... fixed for the game
-    rulesCode: rulesCode(rules, n), // always 'std' (v5 rules)
-    rng, // the game's RNG stream (first dealer, Brumby shuffles, deals)
+    params, // deriveParams(): suits, hand size, tricks per half, trumps, row size ... fixed for the game
+    rulesCode: rulesCode(rules, n), // always 'std' (v6 rules)
+    rng, // the game's RNG stream (first dealer, Brumby shuffles, deals, Climb rows)
     deals: deals ? JSON.parse(JSON.stringify(deals)) : null,
     manualSeats,
     firstDealer: dealer0,
     dealer: dealer0,
     handNo: 0, // index of the hand being played (= hands completed)
-    phase: 'climb', // 'climb' | 'summit' | 'descent' | 'handEnd' (transient) | 'over'
+    phase: 'climb', // 'climb' | 'descent' | 'handEnd' (transient) | 'over'
     toAct: null, // the seat deciding now; null when the game is over
     leader: null, // the seat that leads (or led) the current trick
-    handsTurned: false, // R5.2 true from the summit to the end of the hand: descent values count
-    hands: filled(n, () => []), // cards in hand by seat, sorted by the value that counts (R1.3)
-    out: [], // cards not dealt: out of play, unseen all game (R3.2, R10.10)
-    piles: filled(n, () => []), // the cards of every trick each seat won this hand (one pile, R4.7)
-    climbTricks: filled(n, () => 0), // climb tricks won this hand (public counts)
+    hands: filled(n, () => []), // cards in hand by seat, sorted (R1.4: ascending on the climb, descending on the descent)
+    out: [], // cards not dealt: out of play, unseen all game (R3.2, R10.9)
+    piles: filled(n, () => []), // the cards of every trick each seat won this hand (one pile, R4.7); counts only in views
+    climbTricks: filled(n, () => 0), // climb tricks won this hand (public counts; score nothing, R7.2)
     descentTricks: filled(n, () => 0), // descent tricks won this hand
-    marker: 0, // R4.8 the mob marker = climb tricks played this hand, 0..6
     trickNo: 0, // completed tricks this hand, climb and descent (0..12)
-    descentTrickNo: 0, // completed descent tricks this hand (0..6) = row position of the next prize
+    climbTrickNo: 0, // completed climb tricks (0..6) = 0-based Climb row position of the next prize
+    descentTrickNo: 0, // completed descent tricks (0..6) = 0-based Brumby row position of the next prize
     trick: null, // the trick being played, or null
-    tricks: [], // completed tricks this hand (public history, R10.11)
-    choices: filled(n, () => null), // summit choice per seat: null | 'chase' | 'watch' (HIDDEN until revealed, R10.6)
-    choiceOrder: [], // the order the summit choices are collected in (R5.8)
-    revealed: false, // the choices have been revealed (R5.9); stays true to the end of the hand
+    tricks: [], // completed tricks this hand (public history, R10.10)
+    climbRow: [], // the face-up Climb row, 6 slots left to right; a slot is null once its trick is won (R3.5, R4.8)
+    climbRowDealt: [], // the 6 Climb ids as laid out this hand
+    climbCards: filled(n, () => []), // each seat's Climb cards taken this hand, in the order won (R4.8, R10.6)
     brumbyDeck: [], // Brumby ids, top first; persists across hands (R8.1); order hidden from every view
-    brumbyDiscard: [], // Brumby ids in the order discarded (public, R10.9)
+    brumbyDiscard: [], // Brumby ids in the order discarded (public, R10.8)
     freshDeck: false, // the deck was shuffled from all 12 and no row has been dealt from it yet
-    row: [], // the face-up row, 6 slots left to right; a slot is null once its trick is won (R5.4, R6.6)
-    rowDealt: [], // the 6 ids as dealt (the hand's record of the row)
-    rowFresh: false, // this hand's row came from a fresh shuffle of all 12 (R7.7 `reshuffled`)
-    topHomeSeat: null, // set at the summit: holder of the highest Home card still in hand (R7.7)
-    kept: filled(n, () => []), // each chaser's kept Brumby ids this hand, in the order won (R6.6)
-    handLog: [], // one record per finished hand (actions.js endHand, R7.7)
+    row: [], // the face-up Brumby row from the summit, 6 slots left to right; null once taken (R5.3, R6.6); [] on the climb
+    rowDealt: [], // the 6 Brumby ids as dealt (the hand's record of the row)
+    rowFresh: false, // this hand's row came from a fresh shuffle of all 12 (R7.6 `reshuffled`)
+    kept: filled(n, () => []), // each seat's Brumby cards taken this hand, in the order won (R6.6, R10.6)
+    topHomeSeat: null, // set at the summit: holder of the lowest-numbered Home card still in hand (R7.6, D9)
+    home1Seat: null, // set at the deal: the seat dealt Home 1, or null when it is out unseen (R7.6)
+    handLog: [], // one record per finished hand (actions.js endHand, R7.6)
     totals: filled(n, () => 0), // running totals over finished hands
     measures: emptyMeasures(n),
     result: null, // gameResult() once the game is over
   };
-  const events = [{ type: 'game-started', players: n, firstDealer: dealer0, rules: { ...rules }, rulesCode: state.rulesCode, handsPerGame: params.handsPerGame, chaseCost: params.chaseCost }];
+  const events = [{ type: 'game-started', players: n, firstDealer: dealer0, rules: { ...rules }, rulesCode: state.rulesCode, handsPerGame: params.handsPerGame, suits: [...params.suits] }];
   if (firstDeck) {
     state.brumbyDeck = firstDeck;
     state.freshDeck = true;
