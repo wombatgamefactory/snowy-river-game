@@ -1,26 +1,31 @@
-// archetypes.js - simulator-only bots (offered: false). T3 PLACEHOLDER (v6 engine, 13/11/2026).
+// archetypes.js - simulator-only bots (offered: false), never in the UI's seat menus. v6 has no summit
+// choice, so an archetype is only a style of card play:
 //
-// v6 has no summit choice, so the v5 summit archetypes (always, never, random, nothing, quick, naive-random)
-// are gone. What is left until task T4 ports the Python's naive card play:
-//   naive   PLACEHOLDER: a random legal card (T4: the Python play_naive, Whist habits)
-//   high    the legal card with the highest number (first in hand order on a tie)
-//   low     the legal card with the lowest number
-// makeArchetype(style, policy, id, label) is kept for importers; it returns a random-card bot.
+//   naive   the Python's play_naive (sim/snowy-river-sim-v6.py): Whist habits, lead your most powerful
+//           card, win a trick with the cheapest winner, dump your lowest-power card; it ignores both rows
+//           (never ducks a bad trick, never saves a card). The opponent the simulator measures Medium against.
+//   high    the legal card with the highest number (first in hand order on a tie)   (kit probe)
+//   low     the legal card with the lowest number                                     (kit probe)
+//
+// Pure: no clock, no global randomness; the rng argument is accepted and unused.
 
-import { legalActionsFromView, rngPick, cardNumber } from '../engine/index.js';
+import { legalActionsFromView, cardNumber } from '../engine/index.js';
+import { chooseMediumFromView } from './medium.js';
 
-export function makeArchetype(style, policy, id = `${style}-${policy}`, label = `${style} cards`) {
+/** The Python's naive card play as a bot, built on medium.js's context so the port stays in one place. */
+export function makeArchetype(style = 'naive', id = style, label = `${style} cards`) {
   return {
     id,
     label,
     offered: false,
+    style,
     chooseAction(view, rng) {
-      return rngPick(rng, legalActionsFromView(view));
+      return chooseMediumFromView(view, rng, { style });
     },
   };
 }
 
-export const naiveBot = makeArchetype('naive', 'none', 'naive', 'Naive card play');
+export const naiveBot = makeArchetype('naive', 'naive', 'Naive card play');
 
 function byNumber(id, label, high) {
   return {

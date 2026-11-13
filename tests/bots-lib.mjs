@@ -14,7 +14,7 @@ export const botOf = (level) => {
   if (/^hard:\d+$/.test(level)) return { id: level, chooseAction: (view, rng) => searchAction(view, rng, { samples: Number(level.slice(5)) }).action };
   return getBot(level);
 };
-export const sameAction = (a, b) => a.type === b.type && a.card === b.card && a.choice === b.choice;
+export const sameAction = (a, b) => a.type === b.type && a.card === b.card;
 
 /** Plays one game; `levels[seat]` names each seat's bot. */
 export function playGame({ levels, seed, rules = {}, checkView = true }) {
