@@ -1,5 +1,6 @@
-/* Snowy River - woodcut cream paper, ink brown, and the four suit grounds: dawn amber, gum green, red ochre,
-   night blue. Mobile first: the base rules are the 390 px phone layout; wider screens add columns. */
+/* Snowy River (v6) - woodcut cream paper, ink brown, and the five suit grounds: Escape orange, Climb gum green,
+   Descent sky blue, Muster violet, Home night blue (12/11/2026 palette). Mobile first: the base rules are the
+   390 px phone layout; wider screens add columns. */
 :root {
   --paper: #f8eed6;
   --paper-2: #ecd9ae;
@@ -17,10 +18,14 @@
   --table: #2b1a10;
   --good: #2f7a45;
   /* one colour and one shape per suit, so no suit relies on colour alone */
-  --s-escape: #d9963a;
+  --s-escape: #f07f1e;
   --s-climb: #6f9070;
-  --s-descent: #b4532f;
+  --s-descent: #6fa8d6;
+  --s-muster: #944ddb;
   --s-home: #3c5677;
+  --bad: #a8281c;
+  --wattle: #d9a62e; /* the Climb cards */
+  --teal: #3b7f7a; /* the Brumby cards */
   --font-display: 'Alfa Slab One', Rockwell, 'Rockwell Extra Bold', Georgia, serif;
   --font-body: 'Source Sans 3', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --gutter: 16px;
@@ -135,29 +140,25 @@ legend { font-weight: 700; padding: 0; margin-bottom: 4px; }
 }
 .table[data-n='5'] { --tw: 50px; }
 
-/* status: the phase banner and what to do now */
+/* status: the half banner (direction and trumps) and what to do now */
 .status { background: var(--card); border: 2px solid var(--ink); border-radius: 12px; overflow: hidden; }
-.phasebar { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding: 8px 12px; color: #fff; }
+.phasebar { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding: 8px 12px 8px; color: #fff; }
 .phasebar--climb { background: var(--green-dark); }
-.phasebar--summit { background: var(--gold); color: var(--ink); }
-.phasebar--descent { background: var(--accent); }
+.phasebar--descent { background: var(--night-dark); }
 .phasebar--over { background: var(--ink); }
-.phasebar__badge { width: 30px; height: 30px; flex: none; }
-.phasebar__badge--mob { width: auto; height: 34px; filter: drop-shadow(0 1px 1px rgba(43, 26, 16, 0.5)); }
+.phasebar__badge { width: 38px; height: 38px; flex: none; }
 .phasebar__name { font-family: var(--font-display); font-size: 1.3rem; text-transform: uppercase; letter-spacing: 0.03em; line-height: 1.1; }
-.phasebar__rule { font-weight: 800; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.95; }
-.phasebar__range { flex-basis: 100%; font-size: 0.95rem; font-weight: 800; letter-spacing: 0.01em; }
+.phasebar__rule { font-weight: 900; font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.05em; background: #fff; color: var(--ink); border-radius: 999px; padding: 1px 12px; }
+.phasebar__range { flex-basis: 100%; font-size: 0.92rem; font-weight: 700; letter-spacing: 0.01em; line-height: 1.3; }
 .phasebar__meta { flex-basis: 100%; font-size: 0.8rem; font-weight: 600; opacity: 0.92; }
 .status__prompt { margin: 0; padding: 8px 12px 9px; font-weight: 700; min-height: 3.9em; }
-
-/* the goal of the descent: a big line in the banner area */
-.goal { background: #3a1d10; color: #fff; padding: 10px 12px 9px; border-top: 2px solid var(--ink); }
-.goal p { margin: 0; }
-.goal__main { font-family: var(--font-display); font-size: 1.2rem; line-height: 1.25; }
-.goal__extra { font-size: 0.9rem; font-weight: 700; opacity: 0.92; margin-top: 4px !important; }
-.goal__me { margin-top: 6px !important; padding: 4px 8px; border-radius: 8px; font-size: 1.05rem; font-weight: 800; }
-.goal__me--chase { background: #f1d3cc; color: #5b1717; }
-.goal__me--watch { background: #d9ded6; color: #26332b; }
+/* the ride: six climb steps, the summit, six descent steps */
+.ride { flex-basis: 100%; display: flex; align-items: stretch; gap: 3px; list-style: none; padding: 0; margin: 2px 0 0; }
+.ride__step { flex: 1; min-width: 0; text-align: center; font-size: 0.72rem; font-weight: 800; line-height: 1; padding: 5px 0; border-radius: 4px; background: rgba(255, 255, 255, 0.16); color: rgba(255, 255, 255, 0.8); }
+.ride__step.is-done { background: rgba(255, 255, 255, 0.45); color: var(--ink); }
+.ride__step.is-now { background: #fff; color: var(--ink); box-shadow: 0 0 0 2px var(--gold); }
+.ride__summit { flex: 0 0 auto; display: flex; align-items: center; gap: 3px; padding: 0 6px; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.03em; font-weight: 900; background: var(--gold); color: var(--ink); border-radius: 4px; }
+.ride__summit b { font-weight: 900; }
 /* opponents */
 .opps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .opps[data-opp='1'] { grid-template-columns: minmax(0, 1fr); }
@@ -180,7 +181,7 @@ legend { font-weight: 700; padding: 0; margin-bottom: 4px; }
 .seat__avatar { width: 34px; height: 34px; }
 .seat.is-turn .seat__avatar { box-shadow: 0 0 0 3px var(--gold); }
 .avatar-chip { display: inline-grid; place-items: center; color: #fff; font-weight: 800; }
-.avatar-chip--1 { background: var(--s-descent); } .avatar-chip--2 { background: var(--s-home); } .avatar-chip--3 { background: var(--s-climb); }
+.avatar-chip--1 { background: var(--accent); } .avatar-chip--2 { background: var(--s-home); } .avatar-chip--3 { background: var(--s-climb); }
 .avatar-chip--4 { background: var(--s-escape); color: var(--ink); } .avatar-chip--5 { background: var(--ink-soft); }
 .seat__id { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
 .seat__name { font-weight: 800; overflow-wrap: anywhere; }
@@ -191,88 +192,69 @@ legend { font-weight: 700; padding: 0; margin-bottom: 4px; }
 .tag--dealer { background: var(--ink); color: #fff; }
 .tag--turn { background: var(--gold); color: var(--ink); }
 .tag__badge { width: 16px; height: 16px; }
-/* one pile of tricks per seat (1 point each, up or down), and the Brumby cards a chaser has kept */
-.seat__piles { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
-.pile { display: grid; grid-template-columns: auto 1fr; align-items: end; gap: 0 6px; background: var(--paper-2); border-radius: 8px; padding: 2px 8px 4px; min-width: 0; }
-.pile b { font-family: var(--font-display); font-weight: 400; line-height: 1; font-variant-numeric: tabular-nums; font-size: 2rem; }
-.pile > i { font-style: normal; font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); font-weight: 800; padding-bottom: 3px; }
-.pile__minis { grid-column: 1 / -1; grid-row: 2; display: flex; flex-wrap: wrap; gap: 2px; min-height: 13px; align-content: flex-start; padding-top: 4px; }
-.pile__minis .mini { position: relative; display: block; flex: none; width: 8px; height: 12px; }
-.mini::before { content: ''; position: absolute; left: 50%; top: 50%; width: 8px; height: 12px; border-radius: 1.5px; background: var(--ink) url(assets/cards/card-back.webp) center / cover; box-shadow: 0 0 0 1px var(--ink); transform: translate(-50%, -50%); }
-.seat__kept { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; background: #f3e6c4; border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px; min-height: 32px; min-width: 0; }
-.kept__label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); font-weight: 800; }
-.kept__none { font-size: 0.78rem; color: var(--ink-soft); font-weight: 600; }
-.kept__fan { display: inline-flex; align-items: center; padding-left: 18px; min-width: 0; }
-.kept__card { display: block; width: 38px; margin-left: -18px; flex: none; }
-.kept__card.is-new { animation: slide-in 0.45s ease-out both; }
-.kept__img { display: block; width: 100%; height: auto; aspect-ratio: 480 / 336; border-radius: 4px; box-shadow: 0 1px 3px rgba(43, 26, 16, 0.55); }
-.kept__sum { font-family: var(--font-display); font-weight: 400; font-size: 1.05rem; color: var(--good); }
-.seat__piles .schip { grid-column: 1 / -1; }
-.schip { display: inline-flex; align-items: center; gap: 4px; background: var(--paper-2); border-radius: 8px; padding: 1px 8px 1px 5px; min-height: 26px; white-space: nowrap; }
-.schip b { font-family: var(--font-body); font-weight: 800; font-size: 0.85rem; }
-.schip i { font-style: normal; font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); font-weight: 700; }
-.schip .schip__card, .reck .reck__card { height: 26px; width: 18px; aspect-ratio: 300 / 428; border-radius: 3px; flex: none; filter: none; }
-.schip--slot { visibility: hidden; }
-.schip--chase { background: #f1d3cc; } .schip--watch { background: #d9ded6; }
-.schip--chase i { color: #8a2b1f; font-weight: 800; font-size: 0.8rem; }
-.schip--own { outline: 2px dashed var(--ink-soft); outline-offset: -2px; }
-.seat__score { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: center; font-size: 0.82rem; color: var(--ink-soft); }
-.seat__score b { color: var(--ink); }
-.total b { font-family: var(--font-display); font-weight: 400; font-size: 1.1rem; }
+/* the hand score so far, then the Climb cards and Brumby cards the seat has taken (fans of small cards, with their sums) */
+.seat__score { display: flex; align-items: flex-end; justify-content: space-between; gap: 6px; background: var(--paper-2); border-radius: 8px; padding: 2px 8px 4px; }
+.hscore { display: flex; flex-direction: column; line-height: 1.05; min-width: 0; }
+.hscore__label { font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); font-weight: 800; }
+.hscore__num { font-family: var(--font-display); font-weight: 400; font-size: 2rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.hscore__num--pos { color: var(--good); } .hscore__num--neg { color: var(--bad); } .hscore__num--zero { color: var(--ink); }
+.seat__score .total { font-size: 0.78rem; color: var(--ink-soft); text-align: right; padding-bottom: 2px; }
+.total b { font-family: var(--font-display); font-weight: 400; font-size: 1.1rem; color: var(--ink); }
+.taken { background: #f3e6c4; border: 1px solid var(--line); border-left-width: 4px; border-radius: 8px; padding: 2px 6px 4px; min-height: 42px; min-width: 0; }
+.taken--climb { border-left-color: var(--wattle); } .taken--brumby { border-left-color: var(--teal); }
+.taken__head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.taken__label { font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); font-weight: 800; }
+.taken__sum, .reck__kind b { font-family: var(--font-display); font-weight: 400; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.taken__sum--pos { color: var(--good); } .taken__sum--neg { color: var(--bad); } .taken__sum--zero { color: var(--ink-soft); }
+.taken__none { font-size: 0.74rem; color: var(--ink-soft); font-weight: 600; }
+.taken__fan { display: flex; align-items: center; padding-left: 15px; min-width: 0; }
+.taken__card { display: block; width: 30px; margin-left: -15px; flex: none; }
+.taken__card.is-new { animation: slide-in 0.45s ease-out both; }
+.taken__img { display: block; width: 100%; height: auto; aspect-ratio: 480 / 336; border-radius: 3px; box-shadow: 0 1px 3px rgba(43, 26, 16, 0.55); }
 .badge-suit { display: inline-block; border-radius: 50%; flex: none; vertical-align: middle; }
 span.badge-suit { display: inline-grid; place-items: center; color: #fff; font-size: 0.7em; }
 .badge-suit--escape { background: var(--s-escape); color: var(--ink); } .badge-suit--climb { background: var(--s-climb); }
-.badge-suit--descent { background: var(--s-descent); } .badge-suit--home { background: var(--s-home); }
+.badge-suit--descent { background: var(--s-descent); color: var(--ink); } .badge-suit--muster { background: var(--s-muster); } .badge-suit--home { background: var(--s-home); }
 
 /* card faces: art when there is some, a drawn face (number + suit shape) when there is not */
 .cardimg { display: block; width: 100%; height: auto; aspect-ratio: 300 / 428; user-select: none; -webkit-user-drag: none; filter: drop-shadow(0 1px 3px rgba(43, 26, 16, 0.55)); }
 .asset-chip.cardchip { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0; background: #fff; border: 2px solid var(--ink); border-radius: 8px; color: var(--ink); font-size: 0.8rem; }
 .asset-chip.cardchip b { font-family: var(--font-display); font-weight: 400; font-size: 1.5em; line-height: 1; }
 .asset-chip.cardchip i { font-style: normal; font-size: 1.1em; line-height: 1; }
-.asset-chip.cardchip--escape { color: #8a5a12; border-color: var(--s-escape); } .asset-chip.cardchip--climb { color: var(--green-dark); border-color: var(--s-climb); }
-.asset-chip.cardchip--descent { color: var(--s-descent); border-color: var(--s-descent); } .asset-chip.cardchip--home { color: var(--s-home); border-color: var(--s-home); }
+.asset-chip.cardchip--escape { color: #9a4d05; border-color: var(--s-escape); } .asset-chip.cardchip--climb { color: var(--green-dark); border-color: var(--s-climb); }
+.asset-chip.cardchip--descent { color: #2f6b99; border-color: var(--s-descent); } .asset-chip.cardchip--muster { color: var(--s-muster); border-color: var(--s-muster); } .asset-chip.cardchip--home { color: var(--s-home); border-color: var(--s-home); }
 .asset-chip.cardchip--back { background: repeating-linear-gradient(45deg, var(--s-home), var(--s-home) 6px, var(--night-dark) 6px, var(--night-dark) 12px); border-color: var(--ink); }
 
-/* the stage: Mountain, the Brumby row and the trick */
-.stage { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: 'mountain' 'row' 'trick'; gap: 10px; min-width: 0; }
-.stage__mountain { grid-area: mountain; } .stage__row { grid-area: row; } .stage__trick { grid-area: trick; }
-.stage__mountain, .stage__trick, .stage__row { background: var(--card); border: 2px solid var(--ink); border-radius: 12px; padding: 8px 10px 10px; min-width: 0; }
+/* the stage: the Climb row, the Brumby row and the trick */
+.stage { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: 'climb' 'row' 'trick'; gap: 10px; min-width: 0; }
+.stage__climb { grid-area: climb; } .stage__row { grid-area: row; } .stage__trick { grid-area: trick; }
+.stage__climb, .stage__trick, .stage__row { background: var(--card); border: 2px solid var(--ink); border-radius: 12px; padding: 8px 10px 10px; min-width: 0; }
 body[data-busy='1'] .stage { cursor: pointer; }
 
-/* the Mountain card and the mob marker */
-.mountain { max-width: 440px; margin: 0 auto; }
-.mountain__card { position: relative; border-radius: 10px; box-shadow: 0 2px 6px rgba(43, 26, 16, 0.45); aspect-ratio: 480 / 336; }
-.mountain__img { display: block; width: 100%; height: 100%; border-radius: 10px; }
-.mountain[data-flip='1'] .mountain__img { animation: flip 0.7s ease-out; }
-.mountain__marker { position: absolute; width: 13%; transform: translate(-50%, -86%); transition: left 0.38s ease-in-out, top 0.38s ease-in-out; pointer-events: none; z-index: 3; }
-.mountain__marker::before { content: ''; position: absolute; left: 50%; bottom: 4%; width: 135%; aspect-ratio: 1; border-radius: 50%; transform: translate(-50%, 50%); background: radial-gradient(circle, rgba(217, 150, 58, 0.75) 0%, rgba(217, 150, 58, 0) 68%); z-index: -1; }
-.mountain__piece { display: block; width: 100%; height: auto; filter: drop-shadow(0 2px 2px rgba(43, 26, 16, 0.65)); }
-.mountain__callout { position: absolute; z-index: 4; transform: translate(-50%, -230%); padding: 1px 9px; border-radius: 999px; background: var(--gold); color: var(--ink); border: 2px solid var(--ink); font-weight: 800; font-size: 0.85rem; white-space: nowrap; pointer-events: none; animation: callout 1.1s ease-out both; }
-.mountain__title { margin: 6px 0 0; text-align: center; font-size: 0.85rem; color: var(--ink-soft); font-weight: 600; }
-.mountain__title b { font-family: var(--font-display); font-weight: 400; font-size: 1.1rem; color: var(--ink); }
-.mountain__trump { margin: 4px 0 0; display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 600; font-size: 0.9rem; }
-.mountain__badge { width: 22px; height: 22px; }
-.mountain__fx { margin: 0; text-align: center; min-height: 1.35em; font-size: 0.85rem; font-weight: 800; color: var(--accent-dark); }
-
-/* the Brumby row: the mob laid out at the summit, one card for each descent trick */
-.row__title { font-family: var(--font-display); margin: 2px 0 8px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-.row__cost { font-family: var(--font-body); font-weight: 800; font-size: 0.8rem; color: var(--accent-dark); background: #f4dccf; border-radius: 999px; padding: 1px 10px; }
-.row__slots, .summit__row, .turn__row { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 6px; }
-.rslot, .summit__row li, .turn__row li { position: relative; aspect-ratio: 480 / 336; border-radius: 6px; }
+/* the Climb row (up) and the Brumby row (down): the prize of each trick, face up, with its value under it */
+.row__title { font-family: var(--font-display); margin: 2px 0 8px; display: flex; align-items: baseline; justify-content: space-between; gap: 4px 8px; flex-wrap: wrap; }
+.row__rule { font-family: var(--font-body); font-weight: 800; font-size: 0.78rem; color: var(--ink); border-radius: 999px; padding: 1px 10px; }
+.row--climb .row__title { color: #6d5410; } .row--climb .row__rule { background: #f4e3a8; }
+.row--brumby .row__title { color: #24615c; } .row--brumby .row__rule { background: #cfe5e1; }
+.row__slots, .summit__row { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 6px; }
+.row__slots--climb { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px 4px; }
+.rslot, .summit__row li { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
+.rslot__card { display: block; width: 100%; aspect-ratio: 480 / 336; border-radius: 6px; }
 .rslot__img, .summit__brumby { display: block; width: 100%; height: auto; aspect-ratio: 480 / 336; border-radius: 6px; box-shadow: 0 1px 4px rgba(43, 26, 16, 0.5); }
 .rslot__n { position: absolute; left: -4px; top: -7px; z-index: 2; width: 19px; height: 19px; border-radius: 50%; background: var(--ink); color: #fff; font-size: 0.7rem; font-weight: 800; display: grid; place-items: center; line-height: 1; }
+.rslot__val { font-family: var(--font-display); font-weight: 400; font-size: 1.05rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.rslot__val--pos { color: var(--good); } .rslot__val--neg { color: var(--bad); } .rslot__val--zero { color: var(--ink-soft); }
 .rslot--down .rslot__img { opacity: 0.85; filter: saturate(0.7); }
-.rslot.is-next { outline: 4px solid var(--gold); outline-offset: 2px; box-shadow: 0 0 14px rgba(217, 150, 58, 0.9); z-index: 1; }
-.rslot.is-next.is-new { animation: pop 0.6s ease-out; }
+.rslot.is-bad:not(.is-taken) .rslot__card { box-shadow: 0 0 0 2px var(--bad); }
+.rslot.is-next .rslot__card { outline: 4px solid var(--gold); outline-offset: 2px; box-shadow: 0 0 14px rgba(217, 150, 58, 0.9); z-index: 1; }
+.rslot.is-next.is-new .rslot__card { animation: pop 0.6s ease-out; }
 .rslot.is-next .rslot__n { background: var(--gold); color: var(--ink); }
-.rslot.is-colt .rslot__img, .summit__row .is-colt .summit__brumby, .turn__row .is-colt .summit__brumby { box-shadow: 0 0 0 2px var(--gold), 0 0 10px rgba(217, 150, 58, 0.9); }
-.rslot.is-taken { border: 2px dashed var(--line); display: grid; place-items: center; }
-.rslot__gone { display: flex; flex-direction: column; align-items: center; line-height: 1; gap: 1px; font-size: 0.62rem; font-weight: 800; text-transform: uppercase; color: var(--ink-soft); }
-.rslot__gone i { font-style: normal; }
-.rslot__gone b { font-size: 1.3rem; }
-.rslot__avatar { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
-.rslot__gone--kept { color: var(--good); }
+.rslot.is-next .rslot__val { text-decoration: underline; text-decoration-color: var(--gold); text-decoration-thickness: 3px; text-underline-offset: 3px; }
+.rslot.is-colt .rslot__img, .summit__row .is-colt .summit__brumby { box-shadow: 0 0 0 2px var(--gold), 0 0 10px rgba(217, 150, 58, 0.9); }
+.rslot__gone { display: grid; place-items: center; width: 100%; aspect-ratio: 480 / 336; border: 2px dashed var(--line); border-radius: 6px; }
+.rslot__avatar { width: 62%; max-width: 26px; aspect-ratio: 1; height: auto; border-radius: 50%; object-fit: cover; }
 .row__line { margin: 8px 0 0; font-size: 0.85rem; font-weight: 700; color: var(--ink-soft); min-height: 2.6em; }
+.row--climb .row__line { min-height: 2.6em; }
 .row__piles { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; font-size: 0.82rem; color: var(--ink-soft); font-weight: 600; }
 .row__pile b, .row__discard summary b { font-family: var(--font-display); font-weight: 400; color: var(--ink); }
 .row__discard summary { cursor: pointer; min-height: 24px; }
@@ -284,6 +266,8 @@ body[data-busy='1'] .stage { cursor: pointer; }
 .trick__title { font-family: var(--font-display); margin: 2px 0 6px; font-size: 1rem; }
 .led { white-space: nowrap; }
 .led__badge { width: 22px; height: 22px; margin-right: 3px; vertical-align: -6px; }
+.prize { display: inline-block; font-family: var(--font-body); font-weight: 900; font-size: 0.82rem; border-radius: 999px; padding: 0 9px; margin-left: 4px; vertical-align: 1px; background: var(--paper-2); }
+.prize--pos { background: #d6ecd9; color: #1f5a31; } .prize--neg { background: #f4d4cf; color: var(--bad); }
 .tplays { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 0; margin: 0; }
 .tplay { display: flex; flex-direction: column; align-items: center; gap: 2px; width: var(--tw); }
 .tplay__card, .tplay__slot { display: block; width: var(--tw); }
@@ -295,7 +279,6 @@ body[data-busy='1'] .stage { cursor: pointer; }
 .mark--off-suit { background: var(--accent); color: #fff; }
 .mark--trump, .mark--trumps { background: var(--gold); color: var(--ink); }
 .tplay.is-offsuit .tplay__card .cardimg { opacity: 0.88; }
-.cardimg.is-turned { transform: rotate(180deg); }
 .tplay.is-winner .tplay__card .cardimg { box-shadow: 0 0 0 4px var(--good), 0 0 16px rgba(47, 122, 69, 0.7); border-radius: 6%; animation: pop 0.5s ease-out; }
 .tplay.is-lost { opacity: 0.6; }
 .trick__msg { margin: 6px 0 0; text-align: center; min-height: 1.5em; font-size: 0.9rem; color: var(--ink-soft); }
@@ -306,13 +289,13 @@ body[data-busy='1'] .stage { cursor: pointer; }
 .handbox.is-turn { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(217, 150, 58, 0.8); }
 .handbox__title { font-family: var(--font-display); margin: 0 0 6px; }
 .handbox__title span { font-family: var(--font-body); font-size: 0.8rem; color: var(--ink-soft); margin-left: 6px; }
+.hand .card.is-trump .cardimg { box-shadow: none; }
 .handbox__back { width: 50px; }
 .hand { display: grid; grid-template-columns: repeat(6, var(--hw)); gap: 8px 4px; justify-content: center; padding-top: 8px; }
 .card { padding: 0; border: 0; background: none; position: relative; width: var(--hw); cursor: pointer; font: inherit; border-radius: 6px; transition: transform 0.12s ease; -webkit-tap-highlight-color: transparent; }
 .card.is-legal:hover, .card.is-legal:focus-visible, .card.is-selected { transform: translateY(-8px); }
 .card.is-selected .cardimg, .card.is-legal:hover .cardimg { filter: drop-shadow(0 0 3px var(--night)) drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)); }
 .card.is-trump::after { content: ''; position: absolute; left: 12%; right: 12%; bottom: -5px; height: 3px; border-radius: 2px; background: var(--gold); }
-.hand--turning .cardimg { animation: turn-round 1.1s ease-in-out both; }
 .card.is-blocked { cursor: not-allowed; }
 .card.is-blocked .cardimg { filter: grayscale(0.9) brightness(0.62); opacity: 0.7; }
 .card.is-wait { cursor: default; }
@@ -344,7 +327,7 @@ body[data-busy='1'] .stage { cursor: pointer; }
 .log__item--hand { font-weight: 700; color: var(--night); }
 .log__item--event { color: var(--accent-dark); }
 
-/* overlays: the summit, the reveal, the reckoning, the end */
+/* overlays: the summit beat, the reckoning, the end */
 .overlay { position: fixed; inset: 0; background: rgba(43, 26, 16, 0.66); display: flex; align-items: center; justify-content: center; padding: var(--gutter); z-index: 20; }
 .end, .dialog { background: var(--paper); border: 3px solid var(--ink); border-radius: 18px; padding: 18px; width: 100%; max-width: 680px; max-height: calc(100vh - 2 * var(--gutter)); overflow: auto; position: relative; }
 .end__kicker { font-family: var(--font-display); color: var(--accent-dark); margin: 0; }
@@ -357,59 +340,36 @@ body[data-busy='1'] .stage { cursor: pointer; }
 .dialog--wide { max-width: 760px; }
 .table-wrap { overflow-x: auto; }
 
-/* the summit: the turned hand, the row, then Chase and Watch as two cards */
+/* the summit: a beat that shows the switch (the Climb row is empty, lowest wins, Home is trumps, the Brumby row is dealt) */
 .end--summit { max-width: 600px; text-align: center; }
-.end--summit h2 { font-size: 1.4rem; }
-.summit__label { font-weight: 800; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); margin: 10px 0 6px; }
-.summit__hand { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; padding: 0; margin: 0; }
-.summit__hand li { width: 52px; }
+.end--summit h2 { font-size: 1.45rem; }
+.summit__swap { display: flex; justify-content: center; align-items: center; gap: 10px; margin: 8px 0 10px; }
+.summit__side { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 150px; padding: 8px 6px; border-radius: 12px; border: 3px solid var(--ink); line-height: 1.15; }
+.summit__side b { font-family: var(--font-display); font-weight: 400; font-size: 1.15rem; }
+.summit__side small { font-size: 0.78rem; font-weight: 700; }
+.summit__side--was { background: #f6dcc0; opacity: 0.8; }
+.summit__side--now { background: #d5e1ef; animation: pop 0.8s ease-out 0.3s both; }
+.summit__badge { width: 46px; height: 46px; }
+.summit__arrow { font-family: var(--font-display); font-size: 2rem; line-height: 1; }
+.summit__label { font-weight: 800; font-size: 0.85rem; letter-spacing: 0.02em; color: var(--ink-soft); margin: 10px 0 8px; }
 .summit__colt { font-weight: 800; background: #f7e2b8; border: 2px solid var(--gold); border-radius: 10px; padding: 4px 10px; margin: 8px 0 0; }
-.decision { margin-top: 12px; }
-.decision__buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.decide { display: flex; flex-direction: column; align-items: center; gap: 6px; background: var(--card); border: 3px solid var(--ink); border-radius: 14px; padding: 8px 8px 10px; cursor: pointer; font: inherit; color: var(--ink); text-align: center; transition: transform 0.12s ease, box-shadow 0.12s ease; min-width: 0; }
-.decide:hover, .decide:focus-visible { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(43, 26, 16, 0.4); }
-.decide--chase { border-color: #9e2b2b; }
-.decide--watch { border-color: #66726a; }
-.decide__card { width: min(110px, 100%); height: auto; aspect-ratio: 300 / 428; border-radius: 8px; filter: drop-shadow(0 2px 4px rgba(43, 26, 16, 0.5)); }
-.decide__head { font-family: var(--font-display); font-size: 1.05rem; line-height: 1.15; }
-.decide__stakes { font-weight: 600; font-size: 0.85rem; line-height: 1.3; }
-.summit__note { color: var(--ink-soft); font-size: 0.82rem; margin: 12px 0 0; }
+.summit__note { color: var(--ink-soft); font-size: 0.85rem; font-weight: 600; margin: 10px 0 0; }
 
-/* the turn at the summit: the hands and the Mountain turn round */
-.end--turn { max-width: 560px; text-align: center; }
-.end--turn h2 { font-size: 1.45rem; }
-.turn__pics { display: flex; justify-content: center; align-items: center; gap: 18px; margin: 8px 0 12px; }
-.turn__card { width: 84px; display: block; }
-.turn__card .cardimg { animation: turn-round 1.3s ease-in-out 0.35s both; }
-.turn__mtn { width: 150px; display: block; }
-.turn__mtnimg { display: block; width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 6px rgba(43, 26, 16, 0.45); animation: flip 0.8s ease-out 0.35s both; }
-.turn__text { font-weight: 700; margin: 10px 0 0; }
-
-/* the reveal: every card turned together */
-.end--reveal { max-width: 640px; text-align: center; }
-.reveal { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 12px; padding: 0; margin: 10px 0; }
-.reveal__seat { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 84px; animation: flip 0.55s ease-out both; }
-.reveal__seat:nth-child(2) { animation-delay: 0.08s; } .reveal__seat:nth-child(3) { animation-delay: 0.16s; }
-.reveal__seat:nth-child(4) { animation-delay: 0.24s; }
-.reveal__card { width: 84px; height: auto; aspect-ratio: 300 / 428; border-radius: 6px; filter: drop-shadow(0 2px 4px rgba(43, 26, 16, 0.5)); }
-.reveal__who { font-size: 0.8rem; font-weight: 800; line-height: 1.1; overflow-wrap: anywhere; }
-.reveal__text { font-weight: 700; margin: 4px 0 0; }
-
-/* the reckoning: one row per seat, with the sums */
+/* the reckoning: one row per seat, with the Climb cards, the Brumby cards and the sums */
 .reck { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 6px; }
-.reck__row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; grid-template-areas: 'av who score' 'av choice total' 'av what what'; align-items: center; gap: 2px 8px; background: var(--card); border: 2px solid var(--line); border-left-width: 6px; border-radius: 12px; padding: 6px 10px 6px 8px; }
-.reck__row--chase { border-left-color: #9e2b2b; background: #fbeee9; }
-.reck__row--watch { border-left-color: #66726a; }
+.reck__row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; grid-template-areas: 'av who score' 'av what what' 'av total total'; align-items: center; gap: 4px 8px; background: var(--card); border: 2px solid var(--line); border-radius: 12px; padding: 6px 10px 6px 8px; }
 .reck__avatar { grid-area: av; width: 40px; height: 40px; }
 .reck__who { grid-area: who; display: flex; flex-direction: column; line-height: 1.15; min-width: 0; overflow-wrap: anywhere; }
 .reck__who small { color: var(--ink-soft); }
-.reck__choice { grid-area: choice; display: inline-flex; align-items: center; gap: 5px; font-size: 0.85rem; }
-.reck__what { grid-area: what; display: flex; flex-direction: column; line-height: 1.2; }
-.reck__what small { color: var(--ink-soft); }
-.reck__kept { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
-.reck__keptcard { width: 40px; display: block; }
-.reck__keptimg { display: block; width: 100%; height: auto; border-radius: 3px; box-shadow: 0 1px 2px rgba(43, 26, 16, 0.5); }
+.reck__what { grid-area: what; display: grid; gap: 4px; min-width: 0; }
+.reck__kind { display: flex; align-items: center; flex-wrap: wrap; gap: 3px 8px; }
+.reck__kind i { font-style: normal; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); font-weight: 800; width: 84px; }
+.reck__cards { display: inline-flex; flex-wrap: wrap; gap: 3px; }
+.reck__card { width: 38px; display: block; }
+.reck__img { display: block; width: 100%; height: auto; aspect-ratio: 480 / 336; border-radius: 3px; box-shadow: 0 1px 2px rgba(43, 26, 16, 0.5); }
+.reck__none { color: var(--ink-soft); }
 .reck__score { grid-area: score; font-family: var(--font-display); font-weight: 400; font-size: 1.7rem; text-align: right; line-height: 1; }
+.reck__score--pos { color: var(--good); } .reck__score--neg { color: var(--bad); }
 .reck__total { grid-area: total; font-size: 0.82rem; color: var(--ink-soft); text-align: right; }
 .reck__total b { color: var(--ink); }
 .summary { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
@@ -439,9 +399,6 @@ body[data-busy='1'] .stage { cursor: pointer; }
 /* ---------- animation (all of it off under reduced motion) ---------- */
 @keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.12); } 100% { transform: scale(1); } }
 @keyframes bump { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
-@keyframes callout { 0% { opacity: 0; margin-top: 8px; } 18% { opacity: 1; margin-top: 0; } 80% { opacity: 1; margin-top: -8px; } 100% { opacity: 0; margin-top: -14px; } }
-@keyframes flip { 0% { transform: rotateY(90deg) scale(0.9); opacity: 0; } 100% { transform: none; opacity: 1; } }
-@keyframes turn-round { 0% { transform: rotate(0deg); } 100% { transform: rotate(180deg); } }
 @keyframes slide-in { 0% { transform: translateX(-14px); opacity: 0; } 100% { transform: none; opacity: 1; } }
 .fx-bump { animation: bump 0.55s ease-out; }
 @media (prefers-reduced-motion: reduce) {
@@ -450,10 +407,9 @@ body[data-busy='1'] .stage { cursor: pointer; }
 
 /* ---------- wider screens ---------- */
 @media (min-width: 560px) {
-  .row__slots, .summit__row, .turn__row { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-  .summit__hand li { width: 60px; }
+  .row__slots, .summit__row { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .setup__seats { grid-template-columns: repeat(2, 1fr); }
-  .reck__row { grid-template-columns: 40px minmax(0, 1.1fr) auto minmax(0, 1.5fr) auto 76px; grid-template-areas: 'av who choice what score total'; padding: 6px 12px 6px 8px; gap: 2px 10px; }
+  .reck__row { grid-template-columns: 40px minmax(0, 0.8fr) minmax(0, 2.2fr) auto 76px; grid-template-areas: 'av who what score total'; padding: 6px 12px 6px 8px; gap: 2px 10px; }
   .opps[data-opp='3'] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .opps[data-opp='3'] .seat:last-child { grid-column: auto; }
 }
@@ -465,9 +421,8 @@ body[data-busy='1'] .stage { cursor: pointer; }
   .opps { grid-template-columns: repeat(var(--opp, 2), minmax(0, 1fr)); gap: 10px; }
   .opps[data-opp='1'] { --opp: 1; max-width: 420px; justify-self: center; width: 100%; }
   .opps[data-opp='2'] { --opp: 2; } .opps[data-opp='3'] { --opp: 3; } .opps[data-opp='4'] { --opp: 4; }
-  .stage { grid-template-columns: minmax(0, 360px) minmax(0, 1fr); grid-template-areas: 'mountain trick' 'mountain row'; grid-template-rows: auto 1fr; gap: 12px; align-items: start; }
+  .stage { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); grid-template-areas: 'climb trick' 'row trick'; grid-template-rows: auto 1fr; gap: 12px; align-items: start; }
   .table[data-n='5'] { --tw: 48px; } .table[data-n='4'] { --tw: 58px; }
-  .table[data-n='4'] .stage { grid-template-columns: minmax(0, 330px) minmax(0, 1fr); } .table[data-n='5'] .stage { grid-template-columns: minmax(0, 310px) minmax(0, 1fr); }
   .table[data-n='4'] .tplays, .table[data-n='5'] .tplays { gap: 6px; }
   .seat__avatar { width: 44px; height: 44px; }
   .seat { padding: 8px 10px; gap: 6px; }
@@ -495,7 +450,7 @@ body[data-busy='1'] .stage { cursor: pointer; }
   .stats b { font-size: 1.05rem; }
   .hero__hook { font-size: 1.25rem; }
   .phasebar__name { font-size: 1.15rem; }
-  .decide__stakes { font-size: 0.82rem; }
+  .phasebar__rule { font-size: 0.95rem; }
 }
 
 /* stats screen, bug reporter */

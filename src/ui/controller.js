@@ -1,7 +1,7 @@
 // controller.js - game flow and the bot driver, with no DOM. Game-agnostic: keep as it is.
 //
 // The UI layer owns rendering and timing; this module owns everything else: creating the game
-// from the setup choices, applying human and bot actions, the bot failure cap, the event log,
+// from the setup, applying human and bot actions, the bot failure cap, the event log,
 // and the pass-and-play rule (with two or more humans, a hand is shown only after its owner
 // has taken the device). It runs unchanged in Node (tests/controller.mjs).
 
@@ -38,7 +38,6 @@ export function createController(cfg) {
   const log = []; // { text, event }
   const listeners = new Set();
   let revealedSeat = null; // pass-and-play: whose hand is on show
-  let coveredSummit = null; // pass-and-play: the summit choice (`hand:seat`) whose player has confirmed the cover
   let lastEvents = [];
   let botRefusals = 0; // total refused bot proposals (should stay 0)
   let workerFailures = 0; // consecutive refused answers through applyBotResult()
@@ -157,15 +156,11 @@ export function createController(cfg) {
     needsHandoff() {
       if (humanSeats.length < 2) return false;
       if (!api.isHumanTurn()) return false;
-      // The summit choice is secret: even the player who just played the last climb card and still holds the
-      // device gets the cover first, because everyone else has been watching the screen.
-      if (state.phase === 'summit') return coveredSummit !== `${state.handNo}:${state.toAct}`;
       return state.toAct !== revealedSeat;
     },
     /** The human at `seat` has the device: their hand may be shown. */
     reveal(seat) {
       revealedSeat = seat;
-      if (state.phase === 'summit') coveredSummit = `${state.handNo}:${seat}`;
       for (const fn of listeners) fn(api);
     },
     /** The seat whose hand the screen may show now (null = none). */

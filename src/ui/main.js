@@ -21,24 +21,23 @@
 //   onGameAbandoned(info)  a game that had started was left before it ended (Quit, Change setup)
 //
 //   There is no variant-change hook: Snowy River has no Playtest switches and rulesCode is always 'std'
-//   (which means the v5 rules from the day the v5 game went live).
+//   (which means the v6 rules from the day the v6 game went live).
 //
 //   info (sessionInfo): { seed, players, seats: [{ type, name }], names, humanSeats, rules,
 //     rulesCode, handNo, startedAt, state } where `state` is the live engine state: read-only.
-//   v5 payloads: onTrickEnd info.event is the 'trick-won' event ({ handNo, trickNo, half, halfTrickNo, winner,
-//     card, byTrump, trump, ledSuit, plays, climbTricks, descentTricks }); a descent trick is followed (not
-//     announced by a hook) by 'brumby-kept' / 'brumby-discarded' in the log. onHandEnd info.event is the
-//     'hand-ended' event and info.record the state.handLog entry ({ choices, chasers, chaserSeats, climbTricks,
-//     descentTricks, trickCounts, kept, keptValues, costs, scores, breakdown, row, rowValues, rowValue, colt,
-//     coltTrick, coltWinner, coltKept, topHomeSeat, reshuffled, totalsAfter, ... }). onGameEnd info.result is the
+//   v6 payloads (engine-api-v3.md): onTrickEnd info.event is the 'trick-won' event ({ handNo, trickNo, half,
+//     halfTrickNo, winner, card, byTrump, trump, direction, ledSuit, plays, climbTricks, descentTricks }); a trick is
+//     followed (not announced by a hook) by 'climb-card-taken' / 'brumby-taken' in the log. onHandEnd info.event is the
+//     'hand-ended' event and info.record the state.handLog entry ({ climbRow, climbRowValues, minusPosition,
+//     minusWinner, climbCards, climbValues, kept, keptValues, scores, breakdown, row, rowValues, rowValue, colt,
+//     coltTrick, coltWinner, topHomeSeat, home1Seat, reshuffled, totalsAfter, ... }). onGameEnd info.result is the
 //     'game-over' event = gameResult() ({ totals, lastHandScores, winners, shared, tiebreakUsed, tiedOnTotal,
 //     ranking [{ seat, total, lastHandScore, rank }], winningScore, margin, ... }) and info.state.measures the
-//     game counters (chaserCounts, nobodyChased, chasesBySeat, keptValue, coltRows, coltKept, ...).
+//     game counters (trumpWins, minusBySeat, coltBySeat, negativeHands, reshuffles, ...).
 //
 // Dialogs: the DIALOGS table below ('rules' and 'stats').
-// The game's own motion: the marker walking up the Mountain one step per trick (board.js frames, then
-// animateMarker() below glides it between two renders), the turn of the hands at the summit, the reveal,
-// the Brumby row being taken card by card and the reckoning.
+// The game's own motion: the cards of a trick, the Climb and Brumby cards going to the winner, the summit beat (the
+// Climb row empty, the banner switching to "lowest wins, Home is trumps", the Brumby row being dealt) and the reckoning.
 // ---------------------------------------------------------------------------------------
 
 import { createController } from './controller.js';
@@ -51,7 +50,7 @@ import { makeVm } from './viewmodel.js';
 import { boardFromState, buildFrames } from './board.js';
 import { trickSentence, previewText, handEndText } from './text.js';
 import {
-  esc, tableHtml, handBoxHtml, sideHtml, coverHtml, handSummaryHtml, gameEndHtml, endBarHtml, summitModalHtml, revealHtml, turnHtml,
+  esc, tableHtml, handBoxHtml, sideHtml, coverHtml, handSummaryHtml, gameEndHtml, endBarHtml, summitHtml,
 } from './components.js';
 import { statsStore, createRecorder, toCsv, toJson, exportFilename } from './stats-store.js';
 import { statsHtml, statsButtonsHtml, download } from './stats-view.js';
@@ -292,12 +291,10 @@ function logActionEvent(ev) {
     const seatType = (s) => (ctl.seats[s] ? ctl.seats[s].type : null);
     if (ev.type === 'card-played') logAction({ kind: 'play', handNo: ev.handNo, trickNo: ev.trickNo, seat: ev.seat, seatType: seatType(ev.seat), card: ev.card, auto: !!ev.auto });
     else if (ev.type === 'trick-won') logAction({ kind: 'trick-won', handNo: ev.handNo, trickNo: ev.trickNo, seat: ev.winner, seatType: seatType(ev.winner), card: ev.card });
-    else if (ev.type === 'summit-chosen') logAction({ kind: 'summit-chosen', handNo: ev.handNo, seat: ev.seat, seatType: seatType(ev.seat) });
-    else if (ev.type === 'summit-revealed') logAction({ kind: 'summit-revealed', handNo: ev.handNo, choices: ev.choices });
-    else if (ev.type === 'marker-moved') logAction({ kind: 'marker-moved', handNo: ev.handNo, trickNo: ev.trickNo, from: ev.from, to: ev.to });
-    else if (ev.type === 'summit-opened') logAction({ kind: 'summit-opened', handNo: ev.handNo, row: ev.row, rowValue: ev.rowValue, chaseCost: ev.chaseCost });
-    else if (ev.type === 'brumby-kept' || ev.type === 'brumby-discarded') logAction({ kind: ev.type, handNo: ev.handNo, trickNo: ev.trickNo, seat: ev.winner, card: ev.card, value: ev.value });
-    else if (ev.type === 'hand-ended') logAction({ kind: 'hand-ended', handNo: ev.handNo, chasers: ev.chasers, scores: ev.scores, totals: ev.totals, rowValue: ev.rowValue });
+    else if (ev.type === 'climb-card-taken') logAction({ kind: 'climb-card-taken', handNo: ev.handNo, trickNo: ev.trickNo, seat: ev.winner, card: ev.card, value: ev.value });
+    else if (ev.type === 'summit-opened') logAction({ kind: 'summit-opened', handNo: ev.handNo, row: ev.row, rowValue: ev.rowValue, leader: ev.leader });
+    else if (ev.type === 'brumby-taken') logAction({ kind: ev.type, handNo: ev.handNo, trickNo: ev.trickNo, seat: ev.winner, card: ev.card, value: ev.value });
+    else if (ev.type === 'hand-ended') logAction({ kind: 'hand-ended', handNo: ev.handNo, scores: ev.scores, totals: ev.totals, rowValue: ev.rowValue });
   } catch { /* silent */ }
 }
 
@@ -332,9 +329,7 @@ function gameHtml(vm) {
   const beat = ui.frame && ui.frame.board.banner ? ui.frame.board.banner.kind : null;
   let overlay = '';
   if (ui.modal) overlay = handSummaryHtml(vm, ui.modal);
-  else if (beat === 'reveal') overlay = revealHtml(vm);
-  else if (beat === 'turn') overlay = turnHtml(vm);
-  else if (!ui.frame && vm.myTurn && vm.state.phase === 'summit') overlay = summitModalHtml(vm);
+  else if (beat === 'summit') overlay = summitHtml(vm);
   else if (showEnd) overlay = gameEndHtml(vm);
   return `${topbarHtml()}
     <div class="game${over && ui.endClosed ? ' game--ended' : ''}" data-busy="${ui.frame ? 1 : 0}">
@@ -352,7 +347,7 @@ function render() {
   document.body.dataset.screen = 'game';
   const st = ctl.state;
   const hadOverlay = overlayKey();
-  const hadHandFocus = !!(document.activeElement && document.activeElement.closest && document.activeElement.closest('.hand, .decision'));
+  const hadHandFocus = !!(document.activeElement && document.activeElement.closest && document.activeElement.closest('.hand'));
 
   if (!ui.frame && !ui.modal && ctl.needsHandoff() && st.phase !== 'over') {
     // Pass-and-play: no hand, trick or log stays in the DOM until the next human confirms.
@@ -365,12 +360,11 @@ function render() {
   document.body.dataset.covered = '0';
   const vm = buildVm();
   app.innerHTML = gameHtml(vm);
-  animateMarker();
   refreshPreview();
   focusOverlay(hadOverlay);
   if (hadHandFocus && keyboardUser) ui.wantHandFocus = true;
   if ((hadHandFocus || ui.wantHandFocus) && vm.myTurn && !coarse) {
-    const first = app.querySelector('.hand .card.is-legal, .decision .btn--primary');
+    const first = app.querySelector('.hand .card.is-legal');
     if (first) first.focus({ preventScroll: true });
     ui.wantHandFocus = false;
   }
@@ -378,7 +372,7 @@ function render() {
   if (!ui.frame) pumpBots();
 }
 
-/** Which overlay is up ('' for none): the turn beat, the summit modal, the reveal, a reckoning, the end, the cover. */
+/** Which overlay is up ('' for none): the summit beat, a reckoning, the end, the cover. */
 function overlayKey() {
   const o = app.querySelector('.overlay, .cover');
   return o ? (o.dataset.overlay || 'cover') : '';
@@ -388,30 +382,8 @@ function focusOverlay(hadOverlay) {
   // Keep the focus where it is while the same overlay is redrawn; a different overlay (the turn beat giving way to
   // the summit modal, say) takes the focus, or a keyboard user would be left on the page behind it.
   if (hadOverlay && hadOverlay === overlayKey()) return;
-  // The summit modal has two equal choices: focus its heading, never a side.
   const btn = app.querySelector('.overlay [data-autofocus], .overlay .btn--primary, .cover .btn--primary');
   if (btn) btn.focus({ preventScroll: false });
-}
-
-// ---------- the marker climbing the Mountain ----------
-// Every render replaces the DOM, so a CSS transition cannot run by itself: the new marker is first put
-// where the last one stood, then moved to its step, and the transition does the rest. Only upward moves
-// of the same Mountain are animated (a new hand starts again at step 0 without a ride down).
-let lastMarker = null;
-function animateMarker() {
-  const el = app.querySelector('.mountain__marker');
-  if (!el) { lastMarker = null; return; }
-  const cur = { side: el.dataset.side, step: Number(el.dataset.step), left: el.style.left, top: el.style.top };
-  if (lastMarker && lastMarker.side === cur.side && cur.step > lastMarker.step) {
-    el.style.transition = 'none';
-    el.style.left = lastMarker.left;
-    el.style.top = lastMarker.top;
-    void el.offsetWidth; // commit the starting position
-    el.style.transition = '';
-    el.style.left = cur.left;
-    el.style.top = cur.top;
-  }
-  lastMarker = cur;
 }
 
 // ---------- hints (hover / focus / tap) ----------
@@ -459,17 +431,6 @@ function handleCard(card) {
     return;
   }
   const res = ctl.play({ type: 'play', card });
-  if (!res.ok) { ui.note = res.error; render(); }
-}
-
-/** A decision that is not a card (Chase / Watch at the summit): the action arrives as JSON in data-decision (decisionHtml). */
-function handleDecide(json) {
-  if (!ctl || ui.frame) return;
-  const st = ctl.state;
-  if (st.toAct === null || !ctl.isHumanTurn()) return;
-  let action;
-  try { action = JSON.parse(json); } catch { return; }
-  const res = ctl.play(action);
   if (!res.ok) { ui.note = res.error; render(); }
 }
 
@@ -563,13 +524,12 @@ function closeDialog() {
 document.addEventListener('click', (e) => {
   const overlay = e.target.closest && e.target.closest('[data-overlay="dialog"]');
   if (overlay && e.target === overlay) return closeDialog();
-  if (ui.frame && !ui.modal && e.target.closest && e.target.closest('.stage, .overlay--reveal, .overlay--turn')) wake(); // click the table to skip a pause
+  if (ui.frame && !ui.modal && e.target.closest && e.target.closest('.stage, .overlay--summit')) wake(); // click the table to skip a pause
   const el = e.target.closest && e.target.closest('[data-action]');
   if (!el) return;
   const action = el.dataset.action;
   switch (action) {
     case 'play': handleCard(el.dataset.card); break;
-    case 'decide': handleDecide(el.dataset.decision); break;
     case 'reveal': if (ctl) ctl.reveal(Number(el.dataset.seat)); break;
     case 'continue': if (modalResolve) modalResolve(); break;
     case 'again': startSession(lastSetup); break;

@@ -714,9 +714,9 @@
   "file": "badge-escape.webp",
   "width": 128,
   "height": 128,
-  "bytes": 6364,
+  "bytes": 6646,
   "status": "real",
-  "what": "Escape badge: trophy icon in cream on a escape coloured disc (colour-blind cue)",
+  "what": "Escape badge: trophy icon in cream on a escape coloured disc (colour-blind cue), 12/11/2026 palette",
   "source": "images/suit-icon-escape.png"
  },
  {
@@ -736,7 +736,7 @@
   "height": 128,
   "bytes": 5308,
   "status": "real",
-  "what": "Climb badge: stockwhip icon in cream on a climb coloured disc (colour-blind cue)",
+  "what": "Climb badge: stockwhip icon in cream on a climb coloured disc (colour-blind cue), 12/11/2026 palette",
   "source": "images/suit-icon-climb.png"
  },
  {
@@ -754,9 +754,9 @@
   "file": "badge-descent.webp",
   "width": 128,
   "height": 128,
-  "bytes": 4526,
+  "bytes": 4682,
   "status": "real",
-  "what": "Descent badge: hat icon in cream on a descent coloured disc (colour-blind cue)",
+  "what": "Descent badge: hat icon in cream on a descent coloured disc (colour-blind cue), 12/11/2026 palette",
   "source": "images/suit-icon-descent.png"
  },
  {
@@ -776,8 +776,28 @@
   "height": 128,
   "bytes": 5964,
   "status": "real",
-  "what": "Home badge: horseshoe icon in cream on a home coloured disc (colour-blind cue)",
+  "what": "Home badge: horseshoe icon in cream on a home coloured disc (colour-blind cue), 12/11/2026 palette",
   "source": "images/suit-icon-home.png"
+ },
+ {
+  "id": "icon-muster",
+  "file": "icon-muster.webp",
+  "width": 128,
+  "height": 128,
+  "bytes": 4754,
+  "status": "real",
+  "what": "Muster suit icon (saddle), black on transparent, for light chips",
+  "source": "images/suit-icon-muster.png"
+ },
+ {
+  "id": "badge-muster",
+  "file": "badge-muster.webp",
+  "width": 128,
+  "height": 128,
+  "bytes": 5374,
+  "status": "real",
+  "what": "Muster badge: saddle icon in cream on a muster coloured disc (colour-blind cue), 12/11/2026 palette",
+  "source": "images/suit-icon-muster.png"
  },
  {
   "id": "mob-marker",

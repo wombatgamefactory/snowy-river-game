@@ -3,10 +3,8 @@
 // The UI never re-derives a rule. To hint at a card it copies the state, applies the action with
 // the engine, and reads what happened: if the trick completed (the engine plays forced moves on
 // its own) the trick-won event says who won; if the trick is still open, the engine's
-// trickWinner() names who leads it right now (any trump, else the highest of the suit led).
-// The real state is never touched.
-// There is no summit preview: the stakes are in view.stakes (shown on the summit step), and a preview of
-// the descent is not possible without hidden information, so it is not offered.
+// trickWinner() names who leads it right now (any trump, else the highest of the suit led on the
+// climb, the lowest on the descent). The real state is never touched.
 
 import { applyAction, getActionBlockReason, trickWinner, cloneState, isCardPhase, cardSuit } from '../engine/index.js';
 
@@ -18,8 +16,7 @@ import { applyAction, getActionBlockReason, trickWinner, cloneState, isCardPhase
  *     isTrumpSuit (the card is of the trump suit),
  *     wins, final (the trick is decided), remaining (plays still to come when not final),
  *     winnerSeat, winnerCard,
- *     prizeId (descent: the Brumby card this trick takes), chase (the seat chose Chase),
- *     summit (this play ends the climb) }
+ *     prize (the id of the row card this trick takes: a Climb card on the climb, a Brumby card on the descent) }
  */
 export function previewCard(state, card) {
   const seat = state.toAct;
@@ -31,13 +28,11 @@ export function previewCard(state, card) {
   const played = events.find((e) => e.type === 'card-played');
   const trickN = state.trick ? state.trick.n : state.trickNo + 1;
   const won = events.find((e) => e.type === 'trick-won' && e.handNo === state.handNo && e.trickNo === trickN);
-  const moved = events.find((e) => e.type === 'marker-moved' && e.handNo === state.handNo && e.trickNo === trickN);
   const descent = state.phase === 'descent';
-  const prizeId = descent && state.row.length && state.row[state.descentTrickNo] ? state.row[state.descentTrickNo] : null;
+  const prize = descent ? (state.row[state.descentTrickNo] || null) : (state.climbRow[state.climbTrickNo] || null);
   const base = {
     seat, card, half: state.phase, offSuit: !!played.offSuit, trumps: !!(played.offSuit && played.trump), isTrumpSuit: !!played.trump,
-    wins: false, final: !!won, remaining: 0, winnerSeat: null, winnerCard: null,
-    prizeId, chase: state.choices[seat] === 'chase', summit: moved ? moved.summit : false,
+    wins: false, final: !!won, remaining: 0, winnerSeat: null, winnerCard: null, prize,
   };
   if (won) {
     Object.assign(base, { wins: won.winner === seat, winnerSeat: won.winner, winnerCard: won.card });

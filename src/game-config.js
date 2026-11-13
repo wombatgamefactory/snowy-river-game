@@ -12,7 +12,7 @@ export const GAME_NAME = fill('Snowy River', 'Demo Tricks');
 /** kebab-case: repo name, storage keys, export file names, the analytics game_name. */
 export const GAME_SLUG = fill('snowy-river', 'demo-tricks');
 /** One short strap line for the landing page hero. */
-export const GAME_TAGLINE = fill('The big horses win going up. At the summit, turn your hand round.', 'A plain must-follow trick-taker to prove the kit.');
+export const GAME_TAGLINE = fill('The big horses win going up. Over the top, the smallest horse wins.', 'A plain must-follow trick-taker to prove the kit.');
 /** Where the finished game is published (trailing slash). */
 export const PUBLISH_URL = fill('https://www.wombatgamefactory.com/snowy-river-game/', 'https://www.wombatgamefactory.com/demo-tricks-game/');
 /** No rule book link: the printed rule book (rules/snowy-river-rule-book-v3.pdf, kept in the repo, unlinked) describes the

@@ -2,10 +2,10 @@
 // plus the How to play text that the in-game Rules dialog reuses. Pure string builders and two small
 // form helpers; main.js owns the wiring.
 // Snowy River has no Playtest switches: there is no rules panel, no rules note and no
-// variant plumbing here; every game is the standard (v5) rules. There is no rule book link: the printed
+// variant plumbing here; every game is the standard (v6) rules. There is no rule book link: the printed
 // rule book describes the older rules, so the game's own How to play is the only rules text.
 
-import { SUITS, SUIT_NAMES, SUIT_ICONS } from '../engine/index.js';
+import { SUIT_ORDER, SUIT_NAMES, SUIT_ICONS } from '../engine/index.js';
 import { GAME_NAME, GAME_TAGLINE, FOOTER_VERSION, MAX_SEATS, PLAYER_COUNTS, AT_A_GLANCE } from '../game-config.js';
 import { assetUrl, img, badgeImg, esc } from './assets.js';
 
@@ -21,8 +21,8 @@ export const LEVELS = [
 export const DEFAULT_SETUP = {
   players: 4,
   seats: [
-    { type: 'human', name: '' }, { type: 'easy', name: '' }, { type: 'easy', name: '' }, { type: 'easy', name: '' },
-  ],
+    { type: 'human', name: '' }, { type: 'easy', name: '' }, { type: 'easy', name: '' }, { type: 'easy', name: '' }, { type: 'easy', name: '' },
+  ], // one entry for each of the five seats; only the first `players` are used
   rules: {}, // always the standard rules
   autoPlayForced: false, // off by default so new players see, and click, the only card they may play
 };
@@ -35,20 +35,19 @@ const ICON_AGE = '<svg viewBox="0 0 40 40" aria-hidden="true"><rect x="7" y="5" 
 
 /** The rules in plain steps, as a new player needs them, in teaching order. */
 export function howToPlayHtml() {
-  const suits = SUITS.map((k) => `<li>${badgeImg(k, 'how__badge')}<span>${esc(SUIT_NAMES[k])} <small>${esc(SUIT_ICONS[k])}</small></span></li>`).join('');
+  const suits = SUIT_ORDER.map((k) => `<li>${badgeImg(k, 'how__badge')}<span>${esc(SUIT_NAMES[k])} <small>${esc(SUIT_ICONS[k])}${k === 'muster' ? ', 5 players only' : ''}</small></span></li>`).join('');
   return `<div class="how">
-    <p class="how__lead">Highest card wins, always. Going up the mountain the big horses win. At the summit everyone turns their hand round, and the weedy ponies are suddenly the best cards in the game. Every trick is a point. Then chase the mob down the mountain, or watch from the top.</p>
+    <p class="how__lead">Every hand is the ride. Going up the mountain, the big horses win. Over the top, the smallest horse wins. The mob is laid out below you, brumby by brumby, with wombat holes among them, and sometimes the Colt from old Regret. Win the good cards, dodge the bad ones.</p>
     <ol class="how__steps">
-      <li><h3>The cards</h3><p>48 horse cards: four suits, each running 1 to 12. Every card has <b>two numbers</b>: a big one at the top for the climb, and an upside-down one at the bottom for the descent. The two add up to 13, so a 12 going up is a 1 going down.</p>
+      <li><h3>The cards</h3><p>48 horse cards: four suits, each running 1 to 12, with <b>one number</b> on every card. With five players the violet <b>Muster</b> suit joins in (60 cards); it is never trumps. Three more things sit on the table: the six <b>Climb cards</b> (five worth +1 and one worth -1), the twelve <b>Brumby cards</b> (+2, +1, Flint stones -1, Wombat holes -2 and the Colt +4), and nothing else to track.</p>
         <ul class="how__suits" aria-label="The suits">${suits}</ul></li>
-      <li><h3>The deal</h3><p>Everyone gets 12 cards, climb side up. Cards not dealt stay out, unseen. A game is three hands with two or three players, four hands with four.</p></li>
-      <li><h3>The climb: six tricks</h3><p>The player left of the dealer leads. <b>Follow suit if you can;</b> otherwise play anything. <b>Escape is trumps</b> on the climb: if any Escape card is played, the highest Escape card wins. Otherwise the highest card of the suit led wins. The winner leads the next trick, and the mob climbs one step up the Mountain.</p></li>
-      <li><h3>Every trick is a point</h3><p>You keep the tricks you win in one pile, and each is worth 1 point, up or down.</p></li>
-      <li><h3>The summit</h3><p>After the sixth trick everyone <b>turns their whole hand round</b>, so the numbers that were at the bottom now count. The Mountain card turns over: <b>Home is trumps</b> from here. Six Brumby cards are laid out face up in a row, one for each descent trick, and the Colt may be among them. Everyone chooses <b>Chase</b> or <b>Watch</b> in secret, and the cards are turned together.</p></li>
-      <li><h3>Chase or Watch</h3><p><b>Watch:</b> you pay nothing and every trick is still a point. <b>Chase:</b> you pay 2 (3 with two players), and you keep the Brumby card of every descent trick you win. Most Brumby cards are worth points, a few are wombat holes or flint stones that cost you, and the Colt is worth 4.</p></li>
-      <li><h3>The descent: six tricks</h3><p>The player who won the last climb trick leads. The same rules, reading the turned numbers, with Home as trumps. The winner of each trick takes the next Brumby card from the row, left to right: a chaser keeps it, a watcher sends it off.</p></li>
-      <li><h3>Scoring and winning</h3><p>A watcher scores 1 per trick. A chaser scores 1 per trick, plus the Brumby cards they kept, minus the Chase cost, and can end a hand below zero. The Brumby deck is used up over two hands and then reshuffled. The highest total after the last hand wins. A tie goes to the most points in the last hand; if still level, the win is shared.</p></li>
+      <li><h3>The deal</h3><p>Everyone gets 12 cards. Cards not dealt stay out, unseen. A game is one hand for each player, or three hands with two players. The six Climb cards are shuffled and laid face up in a row each hand, so the -1 lands on a different trick every time.</p></li>
+      <li><h3>The climb: six tricks, highest wins</h3><p>The player left of the dealer leads. <b>Follow suit if you can;</b> otherwise play anything. <b>Escape is trumps</b> on the climb: if any Escape card is played, the highest Escape card wins. Otherwise the highest card of the suit led wins. The winner takes <b>the next Climb card</b> (worth +1, or the one -1) and leads the next trick.</p></li>
+      <li><h3>The summit</h3><p>When the Climb row is empty you are over the top. The direction flips: <b>the lowest card wins</b> and <b>Home is trumps</b>. Six Brumby cards are dealt face up in a row, one for each descent trick.</p></li>
+      <li><h3>The descent: six tricks, lowest wins</h3><p>The player who won the last climb trick leads. Follow suit if you can. If any Home card is played, the lowest Home card wins; otherwise the lowest card of the suit led wins. The winner takes <b>the next card in the Brumby row</b>, good or bad, and leads the next trick. There is no choice: you keep what you win.</p></li>
+      <li><h3>Scoring and winning</h3><p>Add up the Climb cards and Brumby cards you took. Tricks themselves score nothing, and a hand can end below zero. The Brumby deck lasts two hands and is then reshuffled. The highest total after the last hand wins. A tie goes to the most points in the last hand; if still level, the win is shared.</p></li>
     </ol>
+    <p class="how__tip">The 1 is the weedy Timor pony: useless going up, the best card coming down. The player who swept the climb with the big horses has nothing left for the descent.</p>
   </div>`;
 }
 
@@ -105,7 +104,7 @@ export function landingHtml(levels, setup = DEFAULT_SETUP, message = '') {
       <h1 class="sr-only">${esc(GAME_NAME)}</h1>
       <div class="hero__text">
         <p class="hero__hook">${esc(GAME_TAGLINE)}</p>
-        <p class="hero__sub">A trick-taking card game from Banjo Paterson's poem, for ${esc(AT_A_GLANCE.players)} players. Every hand is the ride: up the mountain the big horses win, then everyone turns their hand round and the weedy ponies take over. The mob is laid out below you, brumby by brumby, and maybe the Colt is in it. Chase it, or watch? Play against bots or pass the device to friends.</p>
+        <p class="hero__sub">A trick-taking card game from Banjo Paterson's poem, for ${esc(AT_A_GLANCE.players)} players. Every hand is the ride: up the mountain the big horses win, then over the top the weedy ponies take over. The mob is laid out below you, brumby by brumby, with wombat holes among them, and maybe the Colt. Win the good ones, dodge the bad ones. Play against bots or pass the device to friends.</p>
         <p class="hero__links"><a class="btn btn--quiet" href="#how">How to play</a></p>
       </div>
     </header>

@@ -1,10 +1,12 @@
-// text.js - the sentences the UI shows: trick log lines, turn prompts, hover hints, the summit stakes,
+// text.js - the sentences the UI shows: trick log lines, turn prompts, hover hints, the banner text,
 // tiebreak explanations. Pure functions of data (no DOM), so they run in Node tests.
 //
 // `names` is the per-seat label array from the controller ('You', 'Mia', 'Easy bot 2' ...).
 // A seat called "You" gets second-person verbs ("You led", "your hand").
+// v6 rules: highest wins on the climb (Escape is trumps), lowest wins on the descent (Home is trumps);
+// every trick takes the next card of the Climb row, then of the Brumby row.
 
-import { SUIT_NAMES, cardSuit, cardName, brumbyName, brumbyValue, legalActionsFromView } from '../engine/index.js';
+import { SUIT_NAMES, cardSuit, cardName, rowCardName, rowCardValue, legalActionsFromView } from '../engine/index.js';
 
 const isYou = (name) => name === 'You';
 
@@ -27,11 +29,10 @@ export function ledText(suit) {
   return `${suitName(suit)} was led`;
 }
 
-/** The phase banner: "The climb: highest wins" / "The summit: Chase or Watch" / "The descent: highest wins". */
+/** The half's banner: "The climb: highest wins" / "The descent: lowest wins". */
 export function phaseText(phase) {
   if (phase === 'climb') return 'The climb: highest wins';
-  if (phase === 'descent') return 'The descent: highest wins';
-  if (phase === 'summit') return 'The summit: Chase or Watch';
+  if (phase === 'descent') return 'The descent: lowest wins';
   if (phase === 'over') return 'Game over';
   return '';
 }
@@ -42,14 +43,16 @@ export function phaseParts(phase) {
   return { name: name || '', rule: rule || '' };
 }
 
-/** The line under the banner: which number to read, and what is trumps. */
+/** The line under the banner: what is trumps, and how the trick is decided. */
 export function phaseNote(phase, trump) {
-  const t = trump ? `${suitName(trump)} is trumps.` : '';
-  if (phase === 'climb') return `Read the big number at the top of each card. ${t}`.trim();
-  if (phase === 'summit') return `Hands turned: the numbers that were at the bottom now count. ${t}`.trim();
-  if (phase === 'descent') return `Your hand is turned round: read the number now at the top. ${t}`.trim();
+  const t = trump ? suitName(trump) : '';
+  if (phase === 'climb') return `${t} is trumps: any ${t} card played beats every other suit. Otherwise the highest card of the suit led wins.`;
+  if (phase === 'descent') return `${t} is trumps: any ${t} card played beats every other suit (the lowest ${t} wins). Otherwise the lowest card of the suit led wins.`;
   return '';
 }
+
+/** The short direction word of a half for labels: 'Highest wins' / 'Lowest wins'. */
+export const directionText = (half) => (half === 'descent' ? 'Lowest wins' : 'Highest wins');
 
 /**
  * One plain-English line for a finished trick, e.g.
@@ -59,11 +62,10 @@ export function phaseNote(phase, trump) {
  */
 export function trickSentence(trick, ev, names) {
   const led = trick.ledSuit;
-  const half = trick.half || trick.phase || ev.half;
   const parts = trick.plays.map((p, i) => {
     const who = names[p.seat];
     const win = p.seat === ev.winner;
-    const c = cardName(p.card, half);
+    const c = cardName(p.card);
     let clause;
     if (i === 0) clause = `${who} led ${c}`;
     else if (cardSuit(p.card) === led) clause = `${who} followed with ${c}`;
@@ -79,111 +81,65 @@ export function trickSentence(trick, ev, names) {
 export function winnerBanner(banner, names) {
   const who = names[banner.winner];
   const how = banner.byTrump ? ' (trumps)' : '';
-  return `${who} ${v(who, 'wins')} with ${cardName(banner.card, banner.phase)}${how}`;
+  return `${who} ${v(who, 'wins')} with ${cardName(banner.card)}${how}`;
 }
 
-/** "+2" / "-1" for a Brumby id. */
-export const brumbyValueText = (id) => signed(brumbyValue(id));
+/** "+2" / "-1" for a Brumby or Climb card id. */
+export const rowValueText = (id) => signed(rowCardValue(id));
 
-/**
- * The goal of the descent, in words, for the block under the banner: who chased, what a chaser keeps, and what each
- * human at the table is doing. Null outside the descent (and before the cards are turned). The personal lines are for
- * every human seat (the choices are public once turned), worded in the second person for a seat called You.
- */
-export function descentGoal(board, names, humanSeats = []) {
-  if (board.phase !== 'descent' || !board.revealed) return null;
-  const chasers = board.choices.map((c, s) => (c === 'chase' ? s : -1)).filter((s) => s >= 0);
-  const cost = board.chaseCost;
-  const main = chasers.length
-    ? `${chasers.length === 1 ? 'Chaser' : 'Chasers'} (${list(chasers.map((s) => names[s]))}): win a trick to keep its Brumby card.`
-    : 'Nobody chased: every Brumby card will be sent off.';
-  const extra = `Every trick is 1 point. Chasing costs ${cost}; a watcher who wins a trick sends its Brumby card off.`;
-  const personal = humanSeats.filter((s) => board.choices[s]).map((s) => {
-    const name = names[s];
-    const chased = board.choices[s] === 'chase';
-    let text;
-    if (isYou(name)) text = chased ? `You chased: you paid ${cost}, and keep the Brumby card of every trick you win.` : 'You watched: every trick you win is a point, and its Brumby card is sent off.';
-    else text = chased ? `${name} chased: paid ${cost}, keeps the Brumby card of every trick won.` : `${name} watched: every trick is a point, and the Brumby cards won are sent off.`;
-    return { seat: s, choice: board.choices[s], text };
-  });
-  return { main, extra, personal, chasers };
-}
-
-/** The stakes lines for the viewer's summit decision (from view.stakes). */
-export function stakesText(view) {
-  const st = view.stakes;
-  const sign = st.rowValue >= 0 ? '+' : '';
-  return {
-    chase: `Chase: pay ${st.chaseCost}. Keep the Brumby card of every descent trick you win. The row is worth ${sign}${st.rowValue} in all.`,
-    watch: 'Watch: pay nothing. Every trick is still 1 point, but the Brumby cards you win are sent off.',
-  };
-}
-
-/** One sentence naming what the row holds, for the summit. */
-export function rowSentence(row) {
+/** One sentence naming what the Brumby row holds, for the summit. */
+export function rowSentence(row, valueOf = rowCardValue) {
   const ids = row.filter(Boolean);
-  const total = ids.reduce((a, id) => a + brumbyValue(id), 0);
-  const colt = ids.indexOf('colt');
-  const where = colt >= 0 ? ` The Colt (+4) is number ${row.indexOf('colt') + 1}.` : '';
+  const total = ids.reduce((a, id) => a + valueOf(id), 0);
+  const colt = row.indexOf('colt');
+  const where = colt >= 0 ? ` The Colt (+4) is number ${colt + 1}.` : '';
   return `The row is worth ${signed(total)} in all.${where}`;
 }
 
+/** What this trick is worth, from view.price: "Climb card -1 (-1 point)". */
+export function priceText(price) {
+  if (!price) return '';
+  const val = price.value;
+  return `${rowCardName(price.card)} (${signed(val)} ${val === 1 || val === -1 ? 'point' : 'points'})`;
+}
+
 /**
- * The one-line caption for a playback beat that is not a trick (board.banner): the turn at the summit, the
- * reveal, the descent, the Brumby card won. Everything comes from the event fields kept on the banner.
+ * The one-line caption for a playback beat that is not a trick (board.banner): the deal, the summit, the card
+ * just taken, the reshuffle. Everything comes from the event fields kept on the banner.
  */
-export function bannerText(banner, names, board) {
+export function bannerText(banner, names) {
   if (!banner) return '';
   const who = (s) => names[s];
   switch (banner.kind) {
-    case 'turn': return `The summit! Everyone turns their hand round: the numbers that were at the bottom now count, and Home is trumps. The row is turned up: ${signed(banner.rowValue)} in all.`;
-    case 'reveal': {
-      const c = banner.chasers.map(who);
-      const w = banner.watchers.map(who);
-      if (!c.length) return 'The cards are turned: everyone watches, so every Brumby card will be sent off.';
-      const parts = [`${list(c)} ${c.length === 1 ? v(c[0], 'chases', 'chase') : 'chase'}`];
-      if (w.length) parts.push(`${list(w)} ${w.length === 1 ? v(w[0], 'watches', 'watch') : 'watch'}`);
-      return `The cards are turned: ${parts.join('; ')}.`;
-    }
-    case 'descent': return `The descent: ${who(banner.leader)} ${v(who(banner.leader), 'leads')} (the last to win a climb trick). Home is trumps.`;
+    case 'deal': return `A new hand. The Climb row is laid out face up: five +1 cards and one -1 card, which is on climb trick ${banner.minusPosition}. Highest wins and Escape is trumps.`;
+    case 'summit': return `Over the top! The Climb row is empty. Now the lowest card wins and Home is trumps. The Brumby row is dealt: ${signed(banner.rowValue)} in all.${banner.colt ? ' The Colt is in it.' : ''} ${who(banner.leader)} ${v(who(banner.leader), 'leads')} the descent.`;
     case 'prize': {
       const s = who(banner.seat);
-      const name = brumbyName(banner.card);
-      return banner.to === 'kept' ? `${s} ${v(s, 'keeps')} ${name}.` : `${s} watched, so ${name} is sent off.`;
+      return `${s} ${v(s, 'takes')} ${rowCardName(banner.card)} (${signed(banner.value)}).`;
     }
     case 'reshuffle': return 'Fewer than 6 Brumby cards are left: all 12 are shuffled together.';
     default: return '';
   }
 }
 
-/** The callout beside the marker for the step just taken (board.fx.marker). */
-export function stepCallout(fx) {
-  if (!fx) return null;
-  if (fx.summit) return { text: 'The summit!', title: 'The sixth climb trick: the mob is at the top' };
-  return { text: `Step ${fx.to}`, title: 'Each climb trick moves the mob up one step' };
-}
-
 /** What the human should do now, as a sentence. `view` = the seat's view. */
 export function turnPrompt(view) {
-  if (view.phase === 'summit') {
-    return `The mob is laid out. Choose in secret: Chase (pay ${view.chaseCost}, keep the Brumby cards you win) or Watch.`;
-  }
   const t = view.trick;
   const hand = view.hand;
   const acts = legalActionsFromView(view);
   const led = t ? t.ledSuit : null;
   const trump = suitName(view.trump);
-  const how = `Any ${trump} played beats every other suit; otherwise the highest of the suit led wins.`;
-  const prize = view.phase === 'descent' && view.rowNext !== null && view.row[view.rowNext]
-    ? ` The winner takes the next Brumby card, ${brumbyName(view.row[view.rowNext])} (kept by a chaser, sent off by a watcher).` : '';
+  const how = view.half === 'descent'
+    ? `Any ${trump} played beats every other suit (the lowest ${trump} wins); otherwise the lowest card of the suit led wins.`
+    : `Any ${trump} played beats every other suit (the highest ${trump} wins); otherwise the highest card of the suit led wins.`;
+  const prize = view.price ? ` This trick takes ${priceText(view.price)}.` : '';
   if (led === null) return `You lead. Play any card: everyone else must follow its suit if they can. ${how}${prize}`;
-  const half = view.half;
   const follow = hand.filter((c) => cardSuit(c) === led);
   if (follow.length) {
-    if (acts.length === 1) return `${ledText(led)}. ${cardName(acts[0].card, half)} is the only card you can play.${prize}`;
+    if (acts.length === 1) return `${ledText(led)}. ${cardName(acts[0].card)} is the only card you can play.${prize}`;
     return `${ledText(led)}. You hold ${suitName(led)}, so you must follow suit. ${how}${prize}`;
   }
-  if (acts.length === 1) return `${ledText(led)} and you have none. ${cardName(acts[0].card, half)} is your last card, so you play it.${prize}`;
+  if (acts.length === 1) return `${ledText(led)} and you have none. ${cardName(acts[0].card)} is your last card, so you play it.${prize}`;
   return `${ledText(led)} and you have no ${suitName(led)}. Play anything: ${trump} would trump it; any other suit cannot win.${prize}`;
 }
 
@@ -193,7 +149,6 @@ export function waitingText(board, names, seatTypes) {
   if (board.toAct === null) return '';
   const who = names[board.toAct];
   const bot = seatTypes && seatTypes[board.toAct] !== 'human';
-  if (board.phase === 'summit') return `${who} ${isYou(who) ? 'are' : 'is'} choosing Chase or Watch in secret.`;
   return `${who} ${isYou(who) ? 'are' : 'is'} ${bot ? 'thinking' : 'to play'}.`;
 }
 
@@ -203,24 +158,20 @@ export const points = (k) => `${k} point${k === 1 ? '' : 's'}`;
 /** Hover / tap hint for a card the human may play, from previewCard(). */
 export function previewText(pv, names) {
   if (!pv) return '';
-  const half = pv.half || 'climb';
-  const name = cardName(pv.card, half);
+  const name = cardName(pv.card);
   const trumpNote = pv.trumps ? ' It is a trump, so it beats every other suit.' : '';
-  let prize = '';
-  if (pv.prizeId) {
-    const b = brumbyName(pv.prizeId);
-    prize = pv.chase ? ` The winner of this trick takes ${b}; you chased, so you keep it if you win.` : ` The winner takes ${b}; you watched, so you would send it off.`;
-  }
+  const prize = pv.prize ? ` The winner takes ${rowCardName(pv.prize)} (${signed(rowCardValue(pv.prize))}).` : '';
+  const lowest = pv.half === 'descent';
   if (pv.kind === 'lead') {
     return `${name}: you would lead ${suitName(cardSuit(pv.card))}. Everyone else must follow suit if they can.${pv.isTrumpSuit ? ' It is a trump suit.' : ''}${prize}`;
   }
   if (pv.wins) {
     if (pv.final) return `${name} wins the trick.${trumpNote}${prize}`;
-    return `${name} would win the trick as it stands; ${pv.remaining} still to play.${trumpNote}${prize}`;
+    return `${name} would win the trick as it stands (${lowest ? 'lowest' : 'highest'} so far); ${pv.remaining} still to play.${trumpNote}${prize}`;
   }
   const w = names[pv.winnerSeat];
-  if (pv.final) return `${name} loses: ${w} ${v(w, 'wins')} with ${cardName(pv.winnerCard, half)}.`;
-  return `${name} would not win as it stands (${w} ${isYou(w) ? 'are' : 'is'} ahead with ${cardName(pv.winnerCard, half)}; ${pv.remaining} still to play).${prize}`;
+  if (pv.final) return `${name} loses: ${w} ${v(w, 'wins')} with ${cardName(pv.winnerCard)}.${prize}`;
+  return `${name} would not win as it stands (${w} ${isYou(w) ? 'are' : 'is'} ahead with ${cardName(pv.winnerCard)}; ${pv.remaining} still to play).${prize}`;
 }
 
 /** Players who share a total, grouped: [[seat, seat], ...] only groups of two or more. */

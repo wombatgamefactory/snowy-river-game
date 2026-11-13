@@ -5,11 +5,11 @@
 //   * with two or more humans a hand is on show ONLY while it is that human's own decision, after
 //     they confirmed the cover, and never while a replay of what just happened is on screen;
 //   * the cards a human may play carry a reason when they may not, and a "would it win?" hint.
-// The summit decision's stakes come from the view (view.stakes). `half` ('climb' | 'descent') is whose numbers
-// are read now: a hand is shown climb side up on the climb and turned round from the summit on.
+// `half` ('climb' | 'descent') is the half being played: highest wins on the climb, lowest on the descent.
 
 import { previewCard } from './preview.js';
 import { isCardPhase } from '../engine/index.js';
+import { halfOf } from './board.js';
 
 /**
  * @param {object} p
@@ -42,6 +42,6 @@ export function makeVm({ ctl, ui, board, log }) {
   }
   return {
     state: st, board, frame: ui.frame || null, names: ctl.names, types: ctl.seats.map((s) => s.type), humanSeats: humans,
-    me, shown: handSeat, hand, view, reasons, hints, myTurn, ui, log, half: board.handsTurned ? 'descent' : 'climb',
+    me, shown: handSeat, hand, view, reasons, hints, myTurn, ui, log, half: halfOf(board),
   };
 }

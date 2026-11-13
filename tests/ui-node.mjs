@@ -1,30 +1,36 @@
-// ui-node.mjs - Node-level checks of the UI's pure parts (v5 rules): the table model and its frames (the
-// event reducer must land exactly on the live state after every action, and must never hold an
-// unrevealed summit choice), the sentences, the clone-and-apply hints, the landing/setup builders (no
-// Playtest panel, no rule book link, 2-4 players), the art ids against the manifest, the Mountain, the
-// Brumby row, kept cards, the summit decision and the turn of the hands, the reckoning, the end of the
-// game with its tiebreak, and the pass-and-play hand-hiding rules.
+// ui-node.mjs - Node-level checks of the UI's pure parts (v6 rules): the table model and its frames (the
+// event reducer must land exactly on the live state after every action), the sentences, the clone-and-apply
+// hints, the landing/setup builders (no Playtest panel, no rule book link, 2-5 players), the art ids against the
+// manifest (the Muster included), the half banner (direction and trumps), the Climb row, the Brumby row, the cards
+// each seat has taken and its hand score, the summit beat, the reckoning, the end of the game with its tiebreak, and
+// the pass-and-play hand-hiding rules. None of the v5 terms (Chase, Watch, the Mountain, the mob marker, turning the
+// hand) may appear anywhere.
 // Semantics: PERMANENTLY GREEN. Exit 1 on any failure. Run: node tests/ui-node.mjs
 
 import fs from 'node:fs';
 import { suite, position, play } from './lib.mjs';
 import { createController } from '../src/ui/controller.js';
-import { boardFromState, reduceBoard, buildFrames, sameBoard } from '../src/ui/board.js';
-import { trickSentence, tiebreakText, turnPrompt, previewText, winnerBanner, tiedGroups, waitingText, handEndText, stakesText, phaseText, phaseParts, bannerText, stepCallout, descentGoal } from '../src/ui/text.js';
+import { boardFromState, reduceBoard, buildFrames, sameBoard, halfOf } from '../src/ui/board.js';
+import * as text from '../src/ui/text.js';
+import { trickSentence, tiebreakText, turnPrompt, previewText, winnerBanner, tiedGroups, waitingText, handEndText, phaseText, phaseParts, phaseNote, bannerText, priceText } from '../src/ui/text.js';
 import { previewCard } from '../src/ui/preview.js';
 import { makeVm } from '../src/ui/viewmodel.js';
-import { seatHtml, tableHtml, handBoxHtml, sideHtml, coverHtml, handSummaryHtml, gameEndHtml, statusHtml, endBarHtml, summitModalHtml, revealHtml, turnHtml, mountainHtml, rowHtml, stepPosition, MOUNTAIN_STEPS } from '../src/ui/components.js';
+import * as components from '../src/ui/components.js';
+import { seatHtml, tableHtml, handBoxHtml, sideHtml, coverHtml, handSummaryHtml, gameEndHtml, statusHtml, endBarHtml, summitHtml, climbRowHtml, rowHtml, trickHtml, handScoreOf } from '../src/ui/components.js';
 import * as landing from '../src/ui/landing.js';
 import { landingHtml, howToPlayHtml, seatTypeOptions, uniqueNames, DEFAULT_SETUP, safeCode, PLAYER_COUNTS, humanCount } from '../src/ui/landing.js';
-import { useManifest, assetUrl, builtInIds, img, cardImg, cardBackImg, badgeImg, brumbyImg, choiceArt } from '../src/ui/assets.js';
-import { GAME_NAME, GAME_SLUG, GAME_TAGLINE, PUBLISH_URL, AT_A_GLANCE, FOOTER_VERSION, RULEBOOK_URL } from '../src/game-config.js';
+import { useManifest, assetUrl, builtInIds, img, cardImg, cardBackImg, badgeImg, brumbyImg, climbImg } from '../src/ui/assets.js';
+import * as assets from '../src/ui/assets.js';
+import { GAME_NAME, GAME_SLUG, GAME_TAGLINE, PUBLISH_URL, AT_A_GLANCE, FOOTER_VERSION, RULEBOOK_URL, MAX_SEATS } from '../src/game-config.js';
 import { botLevels } from '../src/bots/index.js';
 import {
-  startGame, applyAction, getValidActions, describeEvent, makeRng, rngPick, fullDeck, cardFace, cloneState, isCardPhase, brumbyDeck, brumbyFace,
+  startGame, applyAction, getValidActions, describeEvent, makeRng, rngPick, fullDeck, cardFace, cloneState, brumbyDeck, brumbyFace, climbCardDeck, climbCardFace, SUITS, SUIT_ORDER,
 } from '../src/engine/index.js';
 
 const { check, done } = suite('ui-node');
 const BAD = /undefined|NaN|\[object/;
+/** Words from the v5 rules that must not appear on any v6 screen. */
+const V5 = /\bChase\b|\bChasing\b|\bWatch\b|\bwatcher|\bchaser|Mountain|mob marker|mountain-|turns? (their|your) (whole )?hand|turned round|two numbers|split card|\bsplit\b/;
 
 // ---------- config and the page ----------
 {
@@ -34,9 +40,10 @@ const BAD = /undefined|NaN|\[object/;
   check('index.html: every token filled', tokens.length === 0, tokens.join(' '));
   check('index.html: one app root, one module script, the consent loader before gtag, nothing loads on localhost', /id="app"/.test(html) && /type="module" src="src\/ui\/main\.js"/.test(html)
     && html.indexOf('cdn-cookieyes.com') < html.indexOf('googletagmanager.com/gtag/js') && /localhost/.test(html));
-  check('index.html: the page text describes v5, not the old rules', !/Low wins the descent/i.test(html) && /turn your hand round/i.test(html));
+  check('index.html: the page text describes v6 (smallest horse wins over the top), with no v5 words', /smallest horse/i.test(html) && !V5.test(html.replace(/<script[\s\S]*?<\/script>/g, '')));
   const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   check('package.json: the scripts the workflow relies on', ['dev', 'test', 'test:browser', 'sim', 'qa', 'sweep'].every((k) => pkg.scripts[k]) && pkg.type === 'module' && pkg.name === 'snowy-river-game');
+  check('config: 2 to 5 players, the tagline is v6 (no turning the hand)', JSON.stringify(PLAYER_COUNTS) === '[2,3,4,5]' && MAX_SEATS === 5 && AT_A_GLANCE.players === '2-5' && /smallest horse/.test(GAME_TAGLINE) && !V5.test(GAME_TAGLINE) && /6 rules/.test(FOOTER_VERSION));
 }
 
 // ---------- art ids against the manifest ----------
@@ -45,30 +52,29 @@ const BAD = /undefined|NaN|\[object/;
   const manifest = { assets: Array.isArray(raw) ? raw : raw.assets };
   const ids = new Set(manifest.assets.map((a) => a.id));
   check('assets: every built-in art id is in the manifest', builtInIds().every((id) => ids.has(id)), builtInIds().filter((id) => !ids.has(id)).join(','));
-  check('assets: all 48 cards resolve to a face in the manifest', fullDeck().every((c) => ids.has(cardFace(c))));
-  check('assets: all 12 Brumby cards resolve to a face in the manifest', brumbyDeck().every((id) => ids.has(brumbyFace(id))));
+  check('assets: all 60 cards (five suits, the Muster included) resolve to a face in the manifest', fullDeck(5).length === 60 && fullDeck(5).every((c) => ids.has(cardFace(c))));
+  check('assets: all 12 Brumby cards and the 6 Climb cards resolve to a face in the manifest', brumbyDeck().every((id) => ids.has(brumbyFace(id))) && climbCardDeck().every((id) => ids.has(climbCardFace(id))) && ids.has('climb-back') && ids.has('brumby-back'));
   check('assets: every file the manifest calls real or placeholder exists', manifest.assets.filter((a) => a.status !== 'missing').every((a) => fs.existsSync(new URL(`../assets/${a.file}`, import.meta.url))));
-  check('assets: no absolute or Windows path in the manifest', manifest.assets.every((a) => !/^([A-Za-z]:|[\\/])/.test(a.file) && !/\\/.test(a.file)));
-  const uiIds = ['card-back', 'favicon', 'avatar-1', 'avatar-5', 'badge-escape', 'badge-home', 'mob-marker', 'chase-3', 'chase-2', 'watch', 'mountain-up', 'mountain-down', 'colt', 'brumby-back', 'brumby-plus2', 'brumby-plus1', 'brumby-flint', 'brumby-wombat'];
-  check('assets: the UI art ids are all built in', uiIds.every((id) => builtInIds().includes(id)));
-  check('assets: the v4 art ids are gone (mountain-6, mountain-7, brumby-front, chase)', ['mountain-6', 'mountain-7', 'brumby-front', 'chase'].every((id) => !builtInIds().includes(id) && !ids.has(id)));
+  check('assets: no absolute or Windows path in the manifest', manifest.assets.every((a) => !/^([A-Za-z]:|[\\/])/.test(a.file) && !/\\/.test(a.file) && !/^([A-Za-z]:|[\\/])/.test(a.source || '')));
+  const uiIds = ['card-back', 'favicon', 'avatar-1', 'avatar-5', 'badge-escape', 'badge-muster', 'badge-home', 'icon-muster', 'colt', 'brumby-back', 'brumby-plus2', 'brumby-plus1', 'brumby-flint', 'brumby-wombat', 'climb-plus1', 'climb-minus1', 'climb-back', 'card-muster-7'];
+  check('assets: the UI art ids are all built in', uiIds.every((id) => builtInIds().includes(id) || id === 'icon-muster' && ids.has(id)));
+  check('assets: a badge and an icon for each of the five suits, the Muster included', SUITS.every((s) => ids.has(`badge-${s}`) && ids.has(`icon-${s}`) && builtInIds().includes(`badge-${s}`)) && SUITS.includes('muster'));
+  check('assets: the v5 art ids are gone (Mountain, Chase, Watch, the mob marker are not built in or in any listing the UI uses)', ['mountain-up', 'mountain-down', 'chase-3', 'chase-2', 'watch', 'mob-marker', 'mountain-6', 'mountain-7', 'brumby-front', 'chase'].every((id) => !builtInIds().includes(id) && !ids.has(id) || id === 'mob-marker' && !builtInIds().includes(id)));
+  check('assets: no choice or Mountain helpers are left in assets.js', !('choiceArt' in assets));
   useManifest(manifest);
-  check('assets: assetUrl resolves an id and refuses an unknown one', assetUrl('badge-home') === 'assets/badge-home.webp' && assetUrl('card-nope-7') === null);
-  check('assets: Chase shows its cost: chase-3 at two players, chase-2 at three and four', choiceArt('chase', 3) === 'chase-3' && choiceArt('chase', 2) === 'chase-2' && choiceArt('watch', 2) === 'watch');
+  check('assets: assetUrl resolves an id and refuses an unknown one', assetUrl('badge-home') === 'assets/badge-home.webp' && assetUrl('badge-muster') === 'assets/badge-muster.webp' && assetUrl('card-nope-7') === null);
   check('assets: an unknown id gives a text chip, not a broken image', /asset-chip/.test(img('nope', { label: 'Nope' })) && !/<img/.test(img('nope')));
   useManifest({ assets: [] });
-  const chipFace = cardImg('escape-7');
-  const chipTurned = cardImg('escape-7', { turned: true });
+  const chipFace = cardImg('muster-7');
   const chipBrumby = brumbyImg('brumby-wombat-1');
+  const chipClimb = climbImg('climb-minus1');
   useManifest({ assets: [{ id: 'card-escape-7', file: 'cards/card-escape-7.webp', width: 300, height: 428 }] });
   const artFace = cardImg('escape-7');
-  const artTurned = cardImg('escape-7', { turned: true });
   useManifest(manifest);
-  check('assets: a card with no art is drawn as a face with its number, suit shape and a label', /cardchip--escape/.test(chipFace) && />7</.test(chipFace) && /aria-label="Escape 7"/.test(chipFace));
-  check('assets: a turned card with no art shows the descent number (13 - 7 = 6)', />6</.test(chipTurned) && /is-turned/.test(chipTurned) && /aria-label="Escape 6"/.test(chipTurned));
-  check('assets: a Brumby card with no art shows its value', />-2</.test(chipBrumby));
-  check('assets: a card with art is an <img> by manifest id; a turned card carries is-turned', /<img/.test(artFace) && artFace.includes('cards/card-escape-7.webp') && !/is-turned/.test(artFace) && /is-turned/.test(artTurned));
-  check('assets: the card back and a badge fall back too', !BAD.test(cardBackImg()) && !BAD.test(badgeImg('home')));
+  check('assets: a card with no art is drawn as a face with its number, suit shape and a label (the Muster too)', /cardchip--muster/.test(chipFace) && />7</.test(chipFace) && /aria-label="Muster 7"/.test(chipFace));
+  check('assets: a Brumby card and a Climb card with no art show their value', />-2</.test(chipBrumby) && />-1</.test(chipClimb));
+  check('assets: a card with art is an <img> by manifest id, upright (never turned)', /<img/.test(artFace) && artFace.includes('cards/card-escape-7.webp') && !/is-turned/.test(artFace) && !/is-turned/.test(cardImg('home-3')));
+  check('assets: the card back and a badge fall back too', !BAD.test(cardBackImg()) && !BAD.test(badgeImg('home')) && !BAD.test(badgeImg('muster')));
 }
 
 // ---------- sentences ----------
@@ -78,17 +84,27 @@ const BAD = /undefined|NaN|\[object/;
   const ev = play(g, 'home-7', 'climb-4');
   const won = ev.find((e) => e.type === 'trick-won');
   const s = trickSentence(g.tricks[0], won, names);
-  check('sentence: an off-suit card is named as thrown; the winner is named', /^Mia led Home 7; Sam had no Home and threw Climb 4; Ann followed with Home 2; Bo followed with Home 9 and wins\.$/.test(s), s);
+  check('sentence: an off-suit card is named as thrown; the winner is named (highest wins on the climb)', /^Mia led Home 7; Sam had no Home and threw Climb 4; Ann followed with Home 2; Bo followed with Home 9 and wins\.$/.test(s), s);
   const g2 = position({ hands: [['home-7', 'home-1', 'escape-1'], ['climb-4', 'climb-2', 'escape-2'], ['home-2', 'climb-3', 'escape-3'], ['home-9', 'climb-9', 'escape-4']], leader: 0 });
   const ev2 = play(g2, 'home-7', 'escape-2');
   const w2 = ev2.find((e) => e.type === 'trick-won');
   const s2 = w2 ? trickSentence(g2.tricks[0], w2, names) : '';
   check('sentence: a trump played on another suit is named as trumping', /Sam had no Home and trumped with Escape 2/.test(s2) || !w2, s2);
+  const d = position({ hands: [['home-7', 'home-1', 'escape-1'], ['home-3', 'climb-2', 'escape-2'], ['home-2', 'climb-3', 'escape-3'], ['home-9', 'climb-9', 'escape-4']], leader: 0, phase: 'descent' });
+  const evd = play(d, 'home-7', 'home-3', 'home-2', 'home-9');
+  const wd = evd.find((e) => e.type === 'trick-won');
+  check('sentence: on the descent the LOWEST card of the suit wins (Home 2)', wd && wd.winner === 2 && /Ann followed with Home 2 and wins/.test(trickSentence(d.tricks[0], wd, names)));
   check('banner: a plain win names the card without a trump note', winnerBanner({ winner: 1, card: 'home-4', phase: 'climb', byTrump: false }, names) === 'Sam wins with Home 4');
   check('banner: second person for You, and a trump is called out', winnerBanner({ winner: 0, card: 'escape-9', phase: 'climb', byTrump: true }, ['You', 'Sam']) === 'You win with Escape 9 (trumps)');
-  check('banner: the descent reads the turned number (Home 4 is a 9 going down)', winnerBanner({ winner: 1, card: 'home-4', phase: 'descent', byTrump: false }, names) === 'Sam wins with Home 9');
-  check('phase banner: the climb, the summit, the descent (highest always wins)', phaseText('climb') === 'The climb: highest wins' && phaseText('descent') === 'The descent: highest wins' && /Chase or Watch/.test(phaseText('summit')));
-  check('phase banner: the parts split on the colon', phaseParts('climb').name === 'The climb' && phaseParts('descent').rule === 'highest wins' && phaseParts('summit').name === 'The summit');
+  check('banner: the descent names the card as printed (one number per card, no turned reading)', winnerBanner({ winner: 1, card: 'home-4', phase: 'descent', byTrump: false }, names) === 'Sam wins with Home 4');
+  check('phase banner: the climb is highest wins, the descent is lowest wins; no summit phase', phaseText('climb') === 'The climb: highest wins' && phaseText('descent') === 'The descent: lowest wins' && phaseText('summit') === '' && phaseText('over') === 'Game over');
+  check('phase banner: the parts split on the colon', phaseParts('climb').name === 'The climb' && phaseParts('descent').rule === 'lowest wins');
+  check('phase note: names the trump suit and the direction in each half', /^Escape is trumps: any Escape card played beats every other suit\. Otherwise the highest card of the suit led wins\.$/.test(phaseNote('climb', 'escape'))
+    && /^Home is trumps: .*lowest Home wins.*lowest card of the suit led wins\.$/.test(phaseNote('descent', 'home')));
+  check('banner text: the deal names the -1 card, the summit names the switch and the leader, a prize names the card, the reshuffle', /climb trick 4/.test(bannerText({ kind: 'deal', minusPosition: 4 }, names)) && /Over the top.*lowest card wins.*Home is trumps.*\+6 in all.*Sam leads the descent/.test(bannerText({ kind: 'summit', rowValue: 6, colt: false, leader: 1 }, names))
+    && /^Ann takes Climb card -1 \(-1\)\.$/.test(bannerText({ kind: 'prize', half: 'climb', seat: 2, card: 'climb-minus1', value: -1 }, names)) && /Colt.*\+4/.test(bannerText({ kind: 'prize', half: 'descent', seat: 2, card: 'colt', value: 4 }, names)) && /all 12 are shuffled/.test(bannerText({ kind: 'reshuffle' }, names)));
+  check('price text: the card and its points', priceText({ card: 'climb-minus1', value: -1 }) === 'Climb card -1 (-1 point)' && /Brumby \+2 \(\+2 points\)/.test(priceText({ card: 'brumby-plus2-1', value: 2 })));
+  check('text.js has no v5 helpers left (stakes, descent goal, step callout)', !('stakesText' in text) && !('descentGoal' in text) && !('stepCallout' in text));
 }
 {
   const names = ['Ann', 'Bo', 'Cy'];
@@ -102,10 +118,8 @@ const BAD = /undefined|NaN|\[object/;
   check('tiebreak text: no tie at the top says nothing', tiebreakText(mk([0], [0], false, false, [0, 0, 0]), names) === '');
   check('tied groups: only groups of two or more', JSON.stringify(tiedGroups({ ranking: [{ seat: 0, total: 9 }, { seat: 1, total: 9 }, { seat: 2, total: 4 }] })) === '[[0,1]]');
   check('hand end text: names every score', handEndText({ handNo: 0, scores: [3, 5, -1] }, names) === 'Hand 1 scores: Ann 3, Bo 5, Cy -1.');
-  check('waiting text: bot, human, You, the summit and the end', waitingText({ phase: 'climb', toAct: 1 }, names, ['human', 'easy', 'human']) === 'Bo is thinking.'
-    && waitingText({ phase: 'climb', toAct: 2 }, names, ['human', 'easy', 'human']) === 'Cy is to play.' && waitingText({ phase: 'summit', toAct: 0 }, ['You', 'Bo'], ['human', 'easy']) === 'You are choosing Chase or Watch in secret.'
-    && waitingText({ phase: 'over', toAct: null }, names, []) === 'Game over.');
-  check('callout: a climb step and the summit', stepCallout({ to: 3, summit: false }).text === 'Step 3' && stepCallout({ to: 6, summit: true }).text === 'The summit!' && stepCallout(null) === null);
+  check('waiting text: bot, human, the end (no summit wait)', waitingText({ phase: 'climb', toAct: 1 }, names, ['human', 'easy', 'human']) === 'Bo is thinking.'
+    && waitingText({ phase: 'descent', toAct: 2 }, names, ['human', 'easy', 'human']) === 'Cy is to play.' && waitingText({ phase: 'over', toAct: null }, names, []) === 'Game over.');
 }
 
 // ---------- clone-and-apply hints ----------
@@ -127,26 +141,28 @@ const BAD = /undefined|NaN|\[object/;
   check('preview: the last card of a trick knows the final result', last.final && !last.wins && last.winnerSeat === 1 && lastWin.final && lastWin.wins);
   check('preview text: reads as English with no raw values', [lead, lose, win, last, lastWin].every((p) => !BAD.test(previewText(p, ['A', 'B', 'C', 'D'])) && previewText(p, ['A', 'B', 'C', 'D']).length > 10));
   check('cloneState: a deep, independent copy', (() => { const c = cloneState(g); c.hands[0].pop(); c.totals[0] = 99; return g.totals[0] !== 99 && JSON.stringify(cloneState(g)) === JSON.stringify(g); })());
-  // a trump played on another suit beats the led suit (Escape on the climb)
   const t = position({ hands: [['home-8', 'climb-1', 'climb-2'], ['climb-3', 'escape-2', 'climb-4'], ['home-3', 'home-5', 'climb-5'], ['home-4', 'home-10', 'climb-6']], leader: 0 });
   play(t, 'home-8');
   const tr = previewCard(t, 'escape-2');
   check('preview (climb): an Escape card played on Home would trump it and win as it stands', tr === null || (tr.wins && tr.trumps));
-  const d = position({ hands: [['home-8', 'home-1', 'escape-1'], ['home-2', 'home-9', 'escape-2'], ['home-3', 'home-5', 'escape-3'], ['home-4', 'home-10', 'escape-4']], leader: 0, phase: 'descent' });
-  play(d, 'home-8');
-  const pd = previewCard(d, 'home-2');
-  check('preview (descent): the highest turned number wins (Home 2 reads 11, Home 9 reads 4)', pd.wins && !previewCard(d, 'home-9').wins && pd.half === 'descent');
-  check('preview (descent): the Brumby card the trick takes is named, and kept or sent off by the choice', !!pd.prizeId && pd.chase === true && /Brumby|Colt|Flint|Wombat/i.test(previewText(pd, ['A', 'B', 'C', 'D'])) && /keep it/.test(previewText(pd, ['A', 'B', 'C', 'D'])));
+  const dd = position({ hands: [['home-8', 'home-1', 'escape-1'], ['home-2', 'home-9', 'escape-2'], ['home-3', 'home-5', 'escape-3'], ['home-4', 'home-10', 'escape-4']], leader: 0, phase: 'descent' });
+  play(dd, 'home-8');
+  const pd = previewCard(dd, 'home-2');
+  check('preview (descent): the LOWEST card wins (Home 2 beats Home 8, Home 9 does not)', pd.wins && !previewCard(dd, 'home-9').wins && pd.half === 'descent');
+  const pt = previewText(pd, ['A', 'B', 'C', 'D']);
+  check('preview (descent): the Brumby card the trick takes is named with its value, and there is no keep / send-off wording', !!pd.prize && /Brumby|Colt|Flint|Wombat/i.test(pt) && /\([+-]\d\)/.test(pt) && !V5.test(pt) && /lowest so far/.test(pt), pt);
+  const pc = previewCard(position({ hands: [['home-8', 'home-1', 'escape-1'], ['home-2', 'home-9', 'escape-2'], ['home-3', 'home-5', 'escape-3'], ['home-4', 'home-10', 'escape-4']], leader: 0 }), 'home-8');
+  check('preview (climb): the Climb card the trick takes is named', /Climb card [+-]1/.test(previewText(pc, ['A', 'B', 'C', 'D'])) && /^climb-/.test(pc.prize));
 }
 
 // ---------- the table model: events land exactly on the live state ----------
 {
-  let actions = 0; let drift = 0; let firstDrift = ''; let framesBad = 0; let modals = 0; let handEnds = 0; let decided = 0; let tricks = 0; let games = 0; let leaks = 0; let turns = 0; let reveals = 0; let prizes = 0; let descents = 0;
-  for (let seed = 1; seed <= 12; seed++) {
-    for (const players of [2, 3, 4]) {
+  let actions = 0; let drift = 0; let firstDrift = ''; let framesBad = 0; let modals = 0; let handEnds = 0; let decided = 0; let tricks = 0; let games = 0; let summits = 0; let climbTakes = 0; let brumbyTakes = 0; let deals = 0;
+  for (let seed = 1; seed <= 10; seed++) {
+    for (const players of [2, 3, 4, 5]) {
       for (const humans of [[0], [0, 1], []]) {
         if (humans.some((h) => h >= players)) continue;
-        if (!(seed <= 4 || humans.length === 1)) continue;
+        if (!(seed <= 3 || humans.length === 1)) continue;
         const started = startGame({ seed: seed * 7 + players, players });
         games++;
         const state = started.state;
@@ -167,11 +183,10 @@ const BAD = /undefined|NaN|\[object/;
             if (f.modal) modals++;
             if (f.kind === 'decided') { decided++; if (!f.board.trick || !f.board.banner || f.board.trick.winner === undefined) framesBad++; }
             if (f.kind === 'resolve') { tricks++; if (!f.log || !/\.$/.test(f.log)) framesBad++; }
-            if (f.kind === 'summit-opened') { turns++; if (!f.board.handsTurned || !f.board.banner || f.board.banner.kind !== 'turn' || f.board.row.length !== 6) framesBad++; }
-            if (f.kind === 'summit-revealed') reveals++;
-            if (f.kind === 'brumby-kept' || f.kind === 'brumby-discarded') prizes++;
-            if (f.kind === 'descent-started') descents++;
-            if (!f.board.revealed && f.board.choices.some((c) => c !== null)) leaks++;
+            if (f.kind === 'deal') { deals++; if (f.board.climbRow.length !== 6 || f.board.climbRow.some((c) => c === null) || f.board.climbNext !== 0) framesBad++; }
+            if (f.kind === 'summit-opened') { summits++; if (f.board.phase !== 'descent' || !f.board.banner || f.board.banner.kind !== 'summit' || f.board.row.length !== 6 || f.board.climbRow.some((c) => c !== null) || halfOf(f.board) !== 'descent') framesBad++; }
+            if (f.kind === 'climb-card-taken') { climbTakes++; if (!f.board.banner || f.board.banner.kind !== 'prize' || !f.log) framesBad++; }
+            if (f.kind === 'brumby-taken') brumbyTakes++;
             if (f.log && BAD.test(f.log)) framesBad++;
           }
           const he = events.filter((e) => e.type === 'hand-ended').length;
@@ -182,10 +197,10 @@ const BAD = /undefined|NaN|\[object/;
       }
     }
   }
-  check('board: walking the events lands exactly on the live state, every action', drift === 0, `${actions} actions in ${games} games, ${drift} drifts, first: ${firstDrift}`);
-  check('board: frames are well formed (a decided beat per trick, one modal per hand end, the turn, the reveal and every Brumby card)', framesBad === 0 && modals === handEnds && handEnds > 100 && decided === tricks && tricks > 1000 && turns === reveals && reveals === descents && turns > 100 && prizes > 600,
-    `bad ${framesBad}, modals ${modals}, hand ends ${handEnds}, decided ${decided}, tricks ${tricks}, turns ${turns}, reveals ${reveals}, prizes ${prizes}`);
-  check('board: no frame ever holds a summit choice before the reveal', leaks === 0, `${leaks}`);
+  check('board: walking the events lands exactly on the live state, every action (2 to 5 players)', drift === 0, `${actions} actions in ${games} games, ${drift} drifts, first: ${firstDrift}`);
+  check('board: frames are well formed (a decided beat per trick, one modal per hand end, six Climb cards and six Brumby cards taken and one summit per hand)',
+    framesBad === 0 && modals === handEnds && handEnds > 100 && decided === tricks && tricks > 1500 && summits === handEnds && climbTakes === 6 * handEnds && brumbyTakes === 6 * handEnds && deals === handEnds - games,
+    `bad ${framesBad}, modals ${modals}, hand ends ${handEnds}, decided ${decided}, tricks ${tricks}, summits ${summits}, climb takes ${climbTakes}, brumby takes ${brumbyTakes}, deals ${deals}`);
 }
 function diffKeys(a, b) {
   const keys = Object.keys(a).filter((k) => !['fx', 'last', 'banner'].includes(k) && JSON.stringify(a[k]) !== JSON.stringify(b[k]));
@@ -215,30 +230,35 @@ function diffKeys(a, b) {
   check('board: a hand end shows the reckoning before the next deal', seen >= 20 && ok, `${seen} hand ends`);
   const b0 = boardFromState(startGame({ seed: 1, players: 3 }).state, [0]);
   check('board: reduceBoard returns a fresh copy and ignores unknown events', reduceBoard(b0, { type: 'nope' }) !== b0 && sameBoard(reduceBoard(b0, { type: 'nope' }), b0));
+  check('board: the board holds no v5 fields (marker, handsTurned, choices, chaseCost, kept piles of tricks)', !['marker', 'handsTurned', 'choices', 'chosen', 'revealed', 'choiceOrder', 'chaseCost'].some((k) => k in b0));
 }
 
 // ---------- landing and setup ----------
 {
   const levels = botLevels();
   const html = landingHtml(levels, DEFAULT_SETUP, '');
-  check('landing: a radio per player count (2, 3, 4) and four seat forms; five players is not offered', JSON.stringify(PLAYER_COUNTS) === '[2,3,4]' && PLAYER_COUNTS.every((n) => html.includes(`name="players" value="${n}"`)) && !html.includes('name="players" value="5"') && (html.match(/class="seatform"/g) || []).length === 4);
+  check('landing: a radio per player count (2, 3, 4, 5) and five seat forms', JSON.stringify(PLAYER_COUNTS) === '[2,3,4,5]' && PLAYER_COUNTS.every((n) => html.includes(`name="players" value="${n}"`)) && (html.match(/class="seatform"/g) || []).length === 5);
   check('landing: no Playtest rules panel and no non-standard note (there are no switches)', !('rulesPanelHtml' in landing) && !/Playtest/i.test(html) && !/non-standard/i.test(html) && !/class="rule"|rules-panel|rules-note/.test(html));
-  check('landing: the hero art, the v5 hook, 2-4 players / 20-30 min / ages 10+', /data-asset="hero-wide"/.test(html) && html.includes(GAME_TAGLINE) && /turn your hand round/.test(GAME_TAGLINE) && AT_A_GLANCE.players === '2-4' && AT_A_GLANCE.minutes === '20-30' && AT_A_GLANCE.age === '10+');
+  check('landing: the hero art, the v6 hook, 2-5 players / 20-30 min / ages 10+', /data-asset="hero-wide"/.test(html) && html.includes(GAME_TAGLINE) && AT_A_GLANCE.players === '2-5' && AT_A_GLANCE.minutes === '20-30' && AT_A_GLANCE.age === '10+');
   check('landing: no rule book link anywhere (page, How to play, footer)', !/rule book|rulebook|\.pdf/i.test(html) && !/rule book|rulebook|\.pdf/i.test(howToPlayHtml()) && RULEBOOK_URL === '' && !/rule book/i.test(FOOTER_VERSION));
   check('landing: setup says to set every seat to a bot to watch', /Set every seat to a bot to watch a game/.test(html));
   check('landing: Play forced cards for me is off by default and explained', /Play forced cards for me/.test(html) && !/id="autoPlayForced" checked/.test(html));
   const how = howToPlayHtml();
-  check('landing: How to play teaches v5 (two numbers, Escape then Home trumps, the turn, the row, Chase 2 or 3, the tiebreak)', /two numbers/.test(how) && /Escape is trumps/.test(how) && /Home is trumps/.test(how) && /turns their whole hand round/.test(how) && /Chase/.test(how) && /Watch/.test(how) && /pay 2 \(3 with two players\)/.test(how) && /most points in the last hand/.test(how));
-  check('landing: How to play has none of the v4 terms (low wins, heels, breakaway, nobody chases)', !/lowest card|at the mob's heels|break away|off-suit steps|nobody chases|1 to 12 in each suit.*No trumps|Brumby card goes under the Colt/i.test(how + html));
+  check('landing: How to play teaches v6 (one number per card, the Climb row with the -1, Escape then Home trumps, highest then lowest wins, the Brumby row, no choice, the tiebreak)',
+    /one number/.test(how) && /Climb cards/.test(how) && /one worth -1/.test(how) && /Escape is trumps/.test(how) && /Home is trumps/.test(how) && /lowest card wins/.test(how) && /Brumby/.test(how) && /Colt/.test(how) && /no choice/.test(how) && /Muster/.test(how) && /most points in the last hand/.test(how) && /Tricks themselves score nothing/.test(how));
+  check('landing: How to play lists all five suits, the Muster marked as five players only', SUIT_ORDER.length === 5 && (how.match(/how__badge/g) || []).length === 5 && /5 players only/.test(how));
+  check('landing: no v5 words on the page or in How to play (Chase, Watch, Mountain, turning the hand, two numbers)', !V5.test(html.replace(/<svg[\s\S]*?<\/svg>/g, '')) && !V5.test(how), (html + how).match(V5) && (html + how).match(V5)[0]);
+  check('landing: no v4 terms (heels, breakaway, nobody chases)', !/at the mob's heels|break away|off-suit steps|nobody chases|Brumby card goes under the Colt/i.test(how + html));
   check('landing: the bug-free text (no undefined / NaN / [object])', !BAD.test(html) && !BAD.test(how));
   check('landing: the contact for bug reports is not on the page as a raw address', !/@/.test(html));
   check('seat menu: human and the three levels, a missing level disabled', /value="human"/.test(seatTypeOptions(levels, 'human')) && /value="hard"/.test(seatTypeOptions(levels, 'easy'))
     && /disabled/.test(seatTypeOptions([{ id: 'easy', label: 'Easy' }], 'easy')));
-  check('seat menu: simulator-only bots are not offered', !/value="high"/.test(seatTypeOptions(levels, 'easy')) && !/value="low"/.test(seatTypeOptions(levels, 'easy')));
+  check('seat menu: simulator-only bots are not offered', !/value="high"/.test(seatTypeOptions(levels, 'easy')) && !/value="low"/.test(seatTypeOptions(levels, 'easy')) && !/value="naive"/.test(seatTypeOptions(levels, 'easy')));
   check('setup: names made unique, case-insensitive', JSON.stringify(uniqueNames(['Sam', 'sam', '', 'Ann', 'SAM'])) === '["Sam","sam 2","","Ann","SAM 3"]');
   check('setup: the rules code of a setup is always std', safeCode(DEFAULT_SETUP) === 'std' && safeCode({ players: 4, rules: { TRUMP: 'red' } }) === 'std');
   check('setup: humans counted over the seats in play only', humanCount({ players: 3, seats: [{ type: 'human' }, { type: 'easy' }, { type: 'human' }, { type: 'human' }] }) === 2);
-  check('setup: the default setup has four seats', DEFAULT_SETUP.seats.length === 4 && DEFAULT_SETUP.players === 4);
+  check('setup: the default setup is four players, with a form entry for each of the five seats', DEFAULT_SETUP.seats.length === 5 && DEFAULT_SETUP.players === 4 && DEFAULT_SETUP.seats[0].type === 'human');
+  check('how to play, in the in-game dialog and on the page, is the same text', howToPlayHtml() === how);
 }
 
 // ---------- pass-and-play: hands stay hidden ----------
@@ -248,13 +268,12 @@ function diffKeys(a, b) {
   const mk = () => makeVm({ ctl: duo, ui, board: boardFromState(duo.state, duo.humanSeats), log: [] });
   const solo = createController({ seats: [{ type: 'human' }, { type: 'easy' }, { type: 'easy' }], seed: 5, autoPlayForced: false });
   const vmLone = makeVm({ ctl: solo, ui, board: boardFromState(solo.state, solo.humanSeats), log: [] });
-  check('viewmodel: a lone human always has their hand on show, with a reason or a hint on every card when it is their turn', vmLone.hand !== null && vmLone.hand.length === 12 && (!vmLone.myTurn || vmLone.hand.every((c) => vmLone.reasons.has(c))));
+  check('viewmodel: a lone human always has their hand on show, with a reason or a hint on every card when it is their turn', vmLone.hand !== null && vmLone.hand.length === 12 && (!vmLone.myTurn || vmLone.hand.every((c) => vmLone.reasons.has(c))) && vmLone.half === 'climb');
   while (!duo.isHumanTurn() && duo.isBotTurn()) duo.stepBot();
   const vmCover = mk();
   check('viewmodel: with two humans no hand is shown until the next human confirms', duo.needsHandoff() ? vmCover.hand === null : true);
   const cover = coverHtml({ names: duo.names, phase: 'climb' }, duo.toAct());
-  check('cover: names the player and shows no card, trick or score', /Pass to [AB]/.test(cover) && !/class="hand"|cardimg|cardchip|tplay|Total|brumbyimg/.test(cover));
-  check('cover: at the summit it asks for a secret Chase or Watch', /Chase or Watch in secret/.test(coverHtml({ names: duo.names, phase: 'summit' }, 1)));
+  check('cover: names the player and shows no card, trick, row or score', /Pass to [AB]/.test(cover) && !/class="hand"|cardimg|cardchip|tplay|Total|brumbyimg|climbimg|rslot/.test(cover) && !V5.test(cover));
   duo.reveal(duo.toAct());
   const vmShown = mk();
   check('viewmodel: after the cover is confirmed the hand of that human is shown', vmShown.hand !== null && vmShown.shown === duo.toAct());
@@ -262,100 +281,95 @@ function diffKeys(a, b) {
   check('viewmodel: while a replay frame is on screen with two humans, no hand is shown', replay.hand === null || replay.shown === null);
 }
 
-// ---------- the summit, the turn of the hands, the row (a real game, played to the summit) ----------
-function toSummit(players, seed, humans = [0]) {
+// ---------- helpers: a real game played to the summit ----------
+/** Plays a real game (random legal cards) up to the first descent trick and returns the controller and the frames of the action that crossed the summit. */
+function toDescent(players, seed, humans = [0]) {
   const types = Array.from({ length: players }, (_, i) => (humans.includes(i) ? 'human' : 'easy'));
   const ctl = createController({ seats: types.map((type) => ({ type })), seed, autoPlayForced: true });
   const rng = makeRng(`s${seed}`);
+  let board = boardFromState(ctl.state, humans);
+  let crossing = null;
   let guard = 0;
-  while (ctl.state.phase !== 'summit' && guard++ < 500) {
-    const acts = ctl.legalActions();
-    const a = rngPick(rng, acts);
-    // drive whoever is to act (the test bypasses the human / bot split)
-    applyAction(ctl.state, a);
+  while (ctl.state.phase === 'climb' && guard++ < 500) {
+    const events = applyAction(ctl.state, rngPick(rng, ctl.legalActions()));
+    const frames = buildFrames(board, events, { names: ctl.names, describe: describeEvent, trickText: trickSentence, liveHands: (s) => ctl.state.hands[s] });
+    if (frames.length) board = frames[frames.length - 1].board;
+    if (events.some((e) => e.type === 'summit-opened')) crossing = { events, frames };
   }
-  return ctl;
+  return { ctl, board, crossing };
 }
+const UI0 = () => ({ selected: null, note: '', panels: {}, frame: null, modal: null });
+
+// ---------- the half banner: direction and trumps in each half ----------
 {
-  const ui = { selected: null, note: '', panels: {}, frame: null, modal: null };
-  for (const players of [2, 3, 4]) {
-    const ctl = toSummit(players, 30 + players);
-    const st = ctl.state;
-    // make seat 0 the one to choose
-    while (st.toAct !== 0 && st.phase === 'summit') applyAction(st, { type: 'summit', choice: 'watch' });
-    const board = boardFromState(st, [0]);
-    const vm = makeVm({ ctl, ui, board, log: [] });
-    const modal = summitModalHtml(vm);
-    const cost = players === 2 ? 3 : 2;
-    check(`summit ${players}p: the modal shows the turned hand, the six-card row with its value, and Chase / Watch`, vm.myTurn && (modal.match(/summit__brumby/g) || []).length === 6 && /Your hand, turned round/.test(modal) && /is-turned/.test(modal) && /worth [+-]\d+ in all/.test(modal) && (modal.match(/data-action="decide"/g) || []).length === 2, modal.slice(0, 200));
-    check(`summit ${players}p: Chase costs ${cost} and shows the ${cost === 3 ? 'chase-3' : 'chase-2'} face; Watch pays nothing`, new RegExp(`data-asset="chase-${cost}"`).test(modal) && !new RegExp(`data-asset="chase-${5 - cost}"`).test(modal) && new RegExp(`pay ${cost}\\.`).test(modal) && /Watch: pay nothing/.test(modal) && /data-asset="watch"/.test(modal));
-    check(`summit ${players}p: the stakes come from the view and name the row value`, stakesText(vm.view).chase.includes(`pay ${cost}`) && /worth [+-]?\d+ in all/.test(stakesText(vm.view).chase) && !BAD.test(modal));
-    check(`summit ${players}p: no side is named before everyone has chosen`, !/schip--chase|schip--watch|Chose Chase|Chose Watch/.test(tableHtml(vm)));
-    check(`summit ${players}p: the Mountain is turned to the descent side, Home is trumps, hands are turned`, board.handsTurned && /mountain-down/.test(mountainHtml(vm)) && /Home<\/b> is trumps going down/.test(mountainHtml(vm)) && !/mountain__marker/.test(mountainHtml(vm)));
-    const rowH = rowHtml(vm);
-    check(`summit ${players}p: the row panel shows six face-up Brumby cards, the cost, the deck and discard counts`, (rowH.match(/class="rslot[ "]/g) || []).length === 6 && /is-next/.test(rowH) && new RegExp(`Chase costs ${cost}`).test(rowH) && /Deck <b>\d+<\/b>/.test(rowH) && /Discard/.test(rowH));
-    const fake = { ...board, banner: { kind: 'turn', row: [...board.row], rowValue: 5, colt: false, chaseCost: cost } };
-    const turn = turnHtml({ ...vm, board: fake, names: ctl.names });
-    check(`summit ${players}p: the turn overlay says everyone turns their hand round and shows the row`, /turns their hand round/.test(turn) && /is-turned/.test(turn) === false && (turn.match(/summit__brumby/g) || []).length === 6 && /overlay--turn/.test(turn));
-    check(`summit ${players}p: the hand box shows the turned hand (rotated, sorted by the number now on top)`, /hand--turned/.test(handBoxHtml(vm)) && /turned round/.test(handBoxHtml(vm)));
-  }
-}
-{
-  const ctl = toSummit(4, 41);
-  const st = ctl.state;
-  const b = boardFromState(st, []);
-  const noChoice = revealHtml({ board: b, names: ctl.names, me: 0 });
-  check('reveal: nothing is shown before the reveal', noChoice === '');
-  const order = [...st.choiceOrder];
-  for (const s of order) applyAction(st, { type: 'summit', choice: s % 2 ? 'watch' : 'chase' });
-  const b2 = boardFromState(st, []);
-  const chasers = b2.choices.map((c, s) => (c === 'chase' ? s : -1)).filter((s) => s >= 0);
-  const vmR = { board: { ...b2, banner: { kind: 'reveal', chasers, watchers: [1, 3], chaseCost: 2 } }, names: ctl.names, me: 0 };
-  const rv = revealHtml(vmR);
-  check('reveal: a Chase or Watch face per seat, with who chose what in words', (rv.match(/class="reveal__seat/g) || []).length === 4 && (rv.match(/data-asset="chase-2"/g) || []).length === 2 && (rv.match(/data-asset="watch"/g) || []).length === 2 && /chase; .* watch/.test(rv) && !BAD.test(rv));
-  check('banners: the turn, the descent start, the prize kept and sent off, the reshuffle', /turns their hand round/.test(bannerText({ kind: 'turn', rowValue: 6 }, ctl.names, b2)) && /leads/.test(bannerText({ kind: 'descent', leader: 1, chasers: [] }, ctl.names, b2))
-    && /keeps/.test(bannerText({ kind: 'prize', seat: 1, to: 'kept', card: 'colt' }, ctl.names, b2)) && /sent off/.test(bannerText({ kind: 'prize', seat: 1, to: 'discard', card: 'colt' }, ctl.names, b2)) && /all 12 are shuffled/.test(bannerText({ kind: 'reshuffle' }, ctl.names, b2)));
-  const nobody = revealHtml({ ...vmR, board: { ...b2, choices: ['watch', 'watch', 'watch', 'watch'], banner: { kind: 'reveal', chasers: [], watchers: [0, 1, 2, 3], chaseCost: 2 } } });
-  check('reveal: nobody chasing is stated, and the descent is still played', /Nobody chased/.test(nobody) && /every Brumby card will be sent off/.test(nobody));
-  const g = descentGoal({ ...b2, phase: 'descent' }, ['You', 'Bo', 'Cy', 'Di'], [0]);
-  check('goal: names the chasers, says what a chaser keeps, and gives the human a personal line', !!g && /^Chasers \(You and Cy\): win a trick to keep its Brumby card\.$/.test(g.main) && /Chasing costs 2/.test(g.extra) && g.personal.length === 1 && /^You chased: you paid 2/.test(g.personal[0].text));
-  check('goal: none outside the descent or before the cards are turned', descentGoal({ ...b2, phase: 'climb' }, ctl.names, [0]) === null && descentGoal({ ...b2, phase: 'descent', revealed: false }, ctl.names, [0]) === null);
+  const ui = UI0();
+  const ctl = createController({ seats: [{ type: 'human' }, { type: 'easy' }, { type: 'easy' }, { type: 'easy' }], seed: 11, autoPlayForced: true });
+  const vm = makeVm({ ctl, ui, board: boardFromState(ctl.state, [0]), log: [] });
+  const s1 = statusHtml(vm);
+  check('banner (climb): THE CLIMB, highest wins, Escape is trumps, with the Escape badge (trophy)', /phasebar--climb/.test(s1) && />The climb</.test(s1) && />highest wins</.test(s1) && /Escape is trumps/.test(s1) && /data-asset="badge-escape"/.test(s1));
+  check('banner (climb): the ride shows six climb steps, the summit and six descent steps, with the first step now', (s1.match(/ride__step--climb/g) || []).length === 6 && (s1.match(/ride__step--descent/g) || []).length === 6 && /class="ride__summit"/.test(s1) && /ride__step--climb is-now/.test(s1) && !/is-done/.test(s1));
+  const { ctl: c2, board: b2 } = toDescent(4, 12);
+  const vm2 = makeVm({ ctl: c2, ui, board: b2, log: [] });
+  const s2 = statusHtml(vm2);
+  check('banner (descent): THE DESCENT, lowest wins, Home is trumps, with the Home badge (horseshoe)', /phasebar--descent/.test(s2) && />The descent</.test(s2) && />lowest wins</.test(s2) && /Home is trumps/.test(s2) && /data-asset="badge-home"/.test(s2));
+  check('banner (descent): the ride has all six climb steps done and the first descent step now', (s2.match(/ride__step--climb is-done/g) || []).length === 6 && /ride__step--descent is-now/.test(s2));
+  check('banner: no v5 words in either half, no raw values', !V5.test(s1 + s2) && !BAD.test(s1 + s2));
+  check('hand box: states the direction and the trump suit in each half', /highest wins/.test(handBoxHtml(vm)) && /Escape is trumps/.test(handBoxHtml(vm)) && /lowest wins/.test(handBoxHtml(vm2)) && /Home is trumps/.test(handBoxHtml(vm2)));
+  check('hand: cards are never turned (one number, upright), the trump suit is marked', !/is-turned|hand--turned|turned round/.test(handBoxHtml(vm) + handBoxHtml(vm2)) && (/is-trump/.test(handBoxHtml(vm)) === vm.hand.some((c) => c.startsWith('escape-'))) && (/is-trump/.test(handBoxHtml(vm2)) === vm2.hand.some((c) => c.startsWith('home-'))));
 }
 
-// ---------- the Mountain card, the marker and the row ----------
+// ---------- the summit beat ----------
 {
-  check('mountain: the climb side has a printed circle table (the foot, then steps 1 to 6)', MOUNTAIN_STEPS.climb.length === 7);
-  check('mountain: step positions are percentages of the card and inside it', MOUNTAIN_STEPS.climb.every((_, k) => { const [x, y] = stepPosition('climb', k); return x > 0 && x < 100 && y > 0 && y < 100; }));
+  for (const players of [2, 3, 4, 5]) {
+    const { ctl, crossing } = toDescent(players, 30 + players);
+    const frame = crossing.frames.find((f) => f.kind === 'summit-opened');
+    const vm = makeVm({ ctl, ui: { ...UI0(), frame }, board: frame.board, log: [] });
+    const h = summitHtml(vm);
+    check(`summit ${players}p: the beat says over the top, lowest wins, Escape was trumps and Home is, shows the six-card row with values and who leads`, /overlay--summit/.test(h) && /Over the top: now the lowest card wins/.test(h) && /Escape/.test(h) && /is trumps, lowest wins/.test(h) && /was trumps, highest won/.test(h) && (h.match(/summit__brumby/g) || []).length === 6 && /worth [+-]\d+ in all/.test(h) && /leads? the descent/.test(h), h.slice(0, 200));
+    check(`summit ${players}p: the Climb row is empty on the beat, the Brumby row is dealt, the banner has changed`, frame.board.climbRow.every((c) => c === null) && frame.board.row.length === 6 && /phasebar--descent/.test(statusHtml(vm)) && /Climb row is empty/.test(climbRowHtml(vm)));
+    check(`summit ${players}p: nothing on the beat names a v5 term and no raw value`, !V5.test(h) && !BAD.test(h));
+    check(`summit ${players}p: the beat is only shown on the summit frame (none on a plain frame)`, summitHtml({ ...vm, board: { ...frame.board, banner: null }, names: ctl.names }) === '');
+  }
+}
+
+// ---------- the Climb row, the Brumby row, the seats ----------
+{
   const ctl = createController({ seats: [{ type: 'human' }, { type: 'easy' }, { type: 'easy' }, { type: 'easy' }], seed: 11, autoPlayForced: true });
-  const ui = { selected: null, note: '', panels: {}, frame: null, modal: null };
+  const ui = UI0();
   const vm = makeVm({ ctl, ui, board: boardFromState(ctl.state, [0]), log: [] });
-  const m = mountainHtml(vm);
-  const [l0, t0] = stepPosition('climb', 0);
-  check('mountain: the climb side with the marker on step 0, Escape named as trumps', /data-asset="mountain-up"/.test(m) && /data-step="0"/.test(m) && m.includes(`style="left:${l0}%;top:${t0}%"`) && /Escape<\/b> is trumps going up/.test(m) && /<b data-marker>0<\/b> of 6 tricks/.test(m));
-  const mm = mountainHtml({ ...vm, board: { ...vm.board, marker: 3 } });
-  const [l3, t3] = stepPosition('climb', 3);
-  check('mountain: the marker moves to the step it is on', mm.includes(`style="left:${l3}%;top:${t3}%"`) && /data-step="3"/.test(mm));
+  const cr = climbRowHtml(vm);
+  const st = ctl.state;
+  const dealtVals = st.climbRowDealt.map((id) => (id === 'climb-minus1' ? -1 : 1));
+  check('Climb row: six face-up Climb cards, in the order dealt, each with its value under it', (cr.match(/class="rslot rslot--climb/g) || []).length === 6 && (cr.match(/rslot__val--pos/g) || []).length === 5 && (cr.match(/rslot__val--neg/g) || []).length === 1 && st.climbRowDealt.every((id, i) => cr.includes(`data-pos="${i + 1}" aria-label="Climb card ${i + 1}: ${id === 'climb-minus1' ? 'Climb card -1' : 'Climb card +1'}`)) && dealtVals.filter((x) => x < 0).length === 1);
+  check('Climb row: the first card is the one on offer (lit), the -1 is marked bad, and the line says what the next trick takes', (cr.match(/is-next/g) || []).length >= 1 && /rslot rslot--climb is-next/.test(cr) && /is-bad/.test(cr) && /Climb trick 1 takes Climb card [+-]1/.test(cr) && /The -1 card is on trick \d/.test(cr));
+  const b = { ...vm.board, climbRow: [null, null, ...vm.board.climbRow.slice(2)], climbTaken: [{ seat: 1 }, { seat: 2 }, null, null, null, null], climbNext: 2 };
+  const cr2 = climbRowHtml({ ...vm, board: b, names: ['You', 'Bo', 'Cy', 'Di'] });
+  check('Climb row: a taken card shows who took it and its value; the next card moves on', (cr2.match(/is-taken/g) || []).length === 2 && /rslot__gone" data-seat="1"/.test(cr2) && /rslot__gone" data-seat="2"/.test(cr2) && /Climb trick 3 takes/.test(cr2) && /data-pos="3"[^>]*>/.test(cr2) && /rslot rslot--climb is-next[^"]*" data-pos="3"/.test(cr2));
   const rowClimb = rowHtml(vm);
-  check('row: during the climb six face-down cards wait, with the deck at 12 and the Chase cost', (rowClimb.match(/rslot--down/g) || []).length === 6 && /Deck <b>12<\/b>/.test(rowClimb) && /Chase costs 2/.test(rowClimb) && /turned up at the summit/.test(rowClimb));
+  check('Brumby row: during the climb six face-down cards wait, with the deck at 12; the line says when it is dealt', (rowClimb.match(/rslot--down/g) || []).length === 6 && /Deck <b>12<\/b>/.test(rowClimb) && /Dealt at the summit/.test(rowClimb) && !V5.test(rowClimb));
   const fakeRow = ['brumby-plus2-1', 'colt', 'brumby-flint', 'brumby-wombat-1', 'brumby-plus1-1', 'brumby-plus2-2'];
-  const b = { ...vm.board, phase: 'descent', handsTurned: true, row: [null, 'colt', ...fakeRow.slice(2)], rowDealt: fakeRow, rowTaken: [{ seat: 2, to: 'kept' }, null, null, null, null, null], rowNext: 1, kept: [[], [], ['brumby-plus2-1'], []], discard: ['brumby-plus1-2'] };
-  const r2 = rowHtml({ ...vm, board: b, names: ['You', 'Bo', 'Cy', 'Di'] });
-  check('row: the next card to be won is lit, a taken card shows who kept it, the Colt is marked, the discard is counted', (r2.match(/is-next/g) || []).length >= 1 && /data-pos="2"[^>]*>/.test(r2) && /rslot is-next[^"]*is-colt|rslot is-next is-colt|is-colt/.test(r2) && /rslot__gone--kept" data-seat="2"/.test(r2) && /Discard <b>1<\/b>/.test(r2) && /still to win/.test(r2));
-  const seatK = seatHtml({ ...vm, board: { ...b, revealed: true, choices: ['watch', 'watch', 'chase', 'watch'], phase: 'descent' }, names: ['You', 'Bo', 'Cy', 'Di'], types: ['human', 'easy', 'easy', 'easy'], view: null }, 2, 'r2');
-  check('seat: a chaser shows the Brumby cards kept, face up, with their sum, and the Chase cost', /seat__kept/.test(seatK) && /kept__card/.test(seatK) && /<b class="kept__sum">\+2<\/b>/.test(seatK) && /Chase<\/b><i>-2<\/i>/.test(seatK));
-  const seatW = seatHtml({ ...vm, board: { ...b, revealed: true, choices: ['watch', 'watch', 'chase', 'watch'], phase: 'descent' }, names: ['You', 'Bo', 'Cy', 'Di'], types: ['human', 'easy', 'easy', 'easy'], view: null }, 1, 'r1');
-  check('seat: a watcher has no kept row', !/seat__kept/.test(seatW) && /Watch/.test(seatW));
-  check('seat: one pile of tricks per seat (no separate climb and descent piles), cards in hand are a small line', (seatW.match(/class="pile[ "]/g) || []).length === 1 && !/pile--descent|pile--climb|heels/i.test(seatW) && /class="seat__hand"/.test(seatW) && /12 cards/.test(seatW));
+  const bd = { ...vm.board, phase: 'descent', row: [null, 'colt', ...fakeRow.slice(2)], rowDealt: fakeRow, rowTaken: [{ seat: 2 }, null, null, null, null, null], rowNext: 1, kept: [[], [], ['brumby-plus2-1'], []], discard: ['brumby-plus1-2'] };
+  const r2 = rowHtml({ ...vm, board: bd, names: ['You', 'Bo', 'Cy', 'Di'] });
+  check('Brumby row: the next card to be won is lit, a taken card shows who took it, the Colt is marked, bad cards are marked, the discard is counted', /rslot rslot--brumby is-next is-colt|is-next[^"]*is-colt/.test(r2) && /rslot__gone" data-seat="2"/.test(r2) && /Discard <b>1<\/b>/.test(r2) && /is-bad/.test(r2) && /still to win/.test(r2) && /rslot__val--neg/.test(r2));
+  check('Brumby row: every value is printed under its card (+2, Colt +4, Flint -1, Wombat -2)', /\+4<\/b>/.test(r2) && /-1<\/b>/.test(r2) && /-2<\/b>/.test(r2));
+  const names4 = ['You', 'Bo', 'Cy', 'Di'];
+  const bs = { ...bd, climbCards: [[], [], ['climb-plus1-1', 'climb-minus1'], []], kept: [[], [], ['brumby-plus2-1', 'brumby-wombat-1'], []] };
+  const seatH = seatHtml({ ...vm, board: bs, names: names4, types: ['human', 'easy', 'easy', 'easy'], view: null }, 2, 'r2');
+  check('seat: leads with the hand score so far (the cards taken: +1 -1 +2 -2 = 0) and shows both lots of taken cards face up with their sums', handScoreOf(bs, 2) === 0 && /data-hand-score="2">0</.test(seatH) && /Hand score/.test(seatH) && (seatH.match(/taken__card/g) || []).length === 4 && /Climb cards/.test(seatH) && /Brumby cards/.test(seatH) && seatH.indexOf('hscore') < seatH.indexOf('taken--climb'));
+  const seatP = seatHtml({ ...vm, board: { ...bs, climbCards: [[], [], ['climb-plus1-1', 'climb-plus1-2'], []], kept: [[], [], ['brumby-plus2-1'], []] }, names: names4, types: ['human', 'easy', 'easy', 'easy'], view: null }, 2, 'r2');
+  check('seat: a positive hand score reads +4 and is styled as such; a negative one is styled as such', /hscore__num--pos" data-hand-score="2">\+4</.test(seatP) && /hscore__num--neg" data-hand-score="2">-?\d/.test(seatHtml({ ...vm, board: { ...bs, climbCards: [[], [], ['climb-minus1'], []], kept: [[], [], ['brumby-wombat-1'], []] }, names: names4, types: ['human', 'easy', 'easy', 'easy'], view: null }, 2, 'r2')));
+  const seatE = seatHtml({ ...vm, names: names4, types: ['human', 'easy', 'easy', 'easy'], view: null }, 1, 'r1');
+  check('seat: nothing taken yet reads 0 and "none yet"; cards in hand are a small line; no pile of tricks or Chase chip', /data-hand-score="1">0</.test(seatE) && /none yet/.test(seatE) && /class="seat__hand"/.test(seatE) && /12 cards/.test(seatE) && !/class="pile|schip|kept__/.test(seatE) && !V5.test(seatE));
   check('seat: one card reads "1 card"', /<b class="seat__cardsnum" data-cards="1">1<\/b> card</.test(seatHtml({ ...vm, board: { ...vm.board, handCounts: [3, 1, 3, 3] } }, 1, 'r1')));
-  check('seat: the pile counts climb and descent tricks together', /<b>5<\/b>/.test(seatHtml({ ...vm, board: { ...vm.board, climbTricks: [3, 0, 0, 0], descentTricks: [2, 0, 0, 0] } }, 0, 'me')));
+  const tr = trickHtml(vm);
+  check('trick: the title says what this trick takes (the next Climb card)', /Climb trick 1 of 6/.test(tr) && /class="prize prize--(pos|neg)"/.test(tr) && /takes [+-]1/.test(tr));
 }
 
 // ---------- screens: the table, hand, side and status over whole games ----------
 {
-  const ui = { selected: null, note: '', panels: {}, frame: null, modal: null };
-  let screens = 0; let bad = ''; let sawEnd = false; let sawSummary = false; let sawSummit = false; let sawDescent = false; let tiebreakSeen = false; let sharedSeen = false; let coltSeen = false;
-  const names = (n) => Array.from({ length: n }, (_, i) => (i === 0 ? 'You' : `Bot ${i + 1}`));
-  for (const [players, seed] of [[2, 3], [3, 4], [4, 5], [4, 9], [3, 12], [2, 14]]) {
+  const ui = UI0();
+  let screens = 0; let bad = ''; let sawEnd = false; let sawSummary = false; let sawDescent = false; let tiebreakSeen = false; let sharedSeen = false; let coltSeen = false; let negSeen = false; let musterSeen = false;
+  for (const [players, seed] of [[2, 3], [3, 4], [4, 5], [5, 6], [5, 9], [4, 9], [3, 12], [2, 14]]) {
     const ctl = createController({ seats: [{ type: 'human' }, ...Array.from({ length: players - 1 }, () => ({ type: 'easy' }))], seed, autoPlayForced: true });
     const rng = makeRng(`sc${seed}`);
     let board = boardFromState(ctl.state, [0]);
@@ -363,10 +377,12 @@ function toSummit(players, seed, humans = [0]) {
     while (ctl.state.phase !== 'over' && guard++ < 400) {
       const st = ctl.state;
       const vm = makeVm({ ctl, ui, board, log: [] });
-      const html = [tableHtml(vm), handBoxHtml(vm), sideHtml(vm), statusHtml(vm), vm.myTurn && st.phase === 'summit' ? summitModalHtml(vm) : ''].join('');
+      const html = [tableHtml(vm), handBoxHtml(vm), sideHtml(vm), statusHtml(vm)].join('');
       screens++;
       if (BAD.test(html) && !bad) bad = `p${players} seed ${seed} trick ${st.trickNo}: ${html.match(BAD)[0]}`;
-      if (st.phase === 'summit') sawSummit = true;
+      if (V5.test(html) && !bad) bad = `p${players} seed ${seed}: v5 word ${html.match(V5)[0]}`;
+      if (!/phasebar--(climb|descent)/.test(html) || !/is trumps/.test(html) && !bad) bad = bad || 'no direction and trumps banner';
+      if (html.includes('card-muster-')) musterSeen = true;
       if (st.phase === 'descent') sawDescent = true;
       const events = applyAction(st, rngPick(rng, getValidActions(st)));
       for (const ev of events) {
@@ -375,11 +391,18 @@ function toSummit(players, seed, humans = [0]) {
           const h = handSummaryHtml(vm2, { kind: 'hand', handNo: ev.handNo, event: ev });
           sawSummary = true;
           if (BAD.test(h) && !bad) bad = `reckoning: ${h.match(BAD)[0]}`;
+          if (V5.test(h) && !bad) bad = `reckoning v5 word: ${h.match(V5)[0]}`;
           const rows = (h.match(/class="reck__row/g) || []).length;
-          const costOk = ev.breakdown.every((x) => (x.choice === 'chase' ? x.cost === (players === 2 ? 3 : 2) : x.cost === 0));
-          if (rows !== players || !costOk || !/Chase -(2|3)|Watch/.test(h)) bad = bad || `reckoning rows ${rows}`;
-          for (const x of ev.breakdown) if (x.choice === 'chase' && x.kept.length && !h.includes(brumbyFace(x.kept[0]))) bad = bad || 'a kept Brumby card is missing from the reckoning';
-          if (ev.colt) coltSeen = true;
+          const sumsOk = ev.breakdown.every((x) => x.score === x.climbValue + x.keptValue);
+          if (rows !== players || !sumsOk || !/Climb cards/.test(h) || !/Brumby cards/.test(h) || !/Deal the next hand|See the final result/.test(h)) bad = bad || `reckoning rows ${rows}`;
+          for (const x of ev.breakdown) {
+            if (x.climbCards.length && !h.includes(climbCardFace(x.climbCards[0]))) bad = bad || 'a taken Climb card is missing from the reckoning';
+            if (x.kept.length && !h.includes(brumbyFace(x.kept[0]))) bad = bad || 'a taken Brumby card is missing from the reckoning';
+            if (x.score < 0) negSeen = true;
+          }
+          if (!new RegExp(`${ev.breakdown.map((x) => (x.score > 0 ? `\\+${x.score}` : `${x.score}`)).join('[\\s\\S]*')}`).test(h)) bad = bad || 'scores not shown in order';
+          if (ev.colt) { coltSeen = true; if (!/won the Colt/.test(h)) bad = bad || 'the Colt winner is not named'; }
+          if (!/took the -1 Climb card/.test(h)) bad = bad || 'the -1 winner is not named';
         }
       }
       const frames = buildFrames(board, events, { names: ctl.names, describe: describeEvent, trickText: trickSentence, liveHands: (s) => st.hands[s] });
@@ -389,17 +412,19 @@ function toSummit(players, seed, humans = [0]) {
         const end = gameEndHtml(vm3);
         sawEnd = true;
         if (BAD.test(end) && !bad) bad = `end: ${end.match(BAD)[0]}`;
+        if (V5.test(end) && !bad) bad = `end v5 word: ${end.match(V5)[0]}`;
         if (/end__tiebreak/.test(end)) tiebreakSeen = true;
         if (st.result.shared) sharedSeen = true;
         if (!/Final ranking/.test(end) || (end.match(/class="rank[ "]/g) || []).length !== players) bad = bad || 'ranking rows';
-        if (!/last hand \d/.test(end)) bad = bad || 'ranking lacks the last hand score';
+        if (!/last hand -?\d/.test(end)) bad = bad || 'ranking lacks the last hand score';
         if (!/Look at the table/.test(end) || !/endbar/.test(endBarHtml(vm3))) bad = bad || 'end buttons';
       }
     }
   }
-  check('screens: the table, hand, side, status and summit render for whole games with no raw values', screens > 100 && !bad, bad);
-  check('screens: the summit, the descent, the summary and the end screen were all reached', sawSummit && sawDescent && sawSummary && sawEnd);
-  check('screens: a game with the Colt in a row was reached', coltSeen);
+  check('screens: the table, hand, side and status render for whole games at 2 to 5 players with the direction and trumps banner, no v5 words and no raw values', screens > 100 && !bad, bad);
+  check('screens: the descent, the reckoning and the end screen were all reached', sawDescent && sawSummary && sawEnd);
+  check('screens: the Colt was reached in a row', coltSeen);
+  check('screens: the Muster suit showed on a five-player table', musterSeen);
 }
 
 // ---------- the game end and its tiebreak (built from a fixed result) ----------
@@ -425,23 +450,24 @@ function toSummit(players, seed, humans = [0]) {
     if (ctl.isBotTurn()) ctl.stepBot(); else applyAction(ctl.state, ctl.legalActions()[0]);
   }
   if (ctl.isHumanTurn()) p = turnPrompt(ctl.view(0));
-  check('prompt: a climb prompt names trumps and the follow rule, with no raw values', /Escape/.test(p) && /follow|only card|last card|Play anything/.test(p) && !BAD.test(p), p);
-  let q = '';
+  check('prompt: a climb prompt names Escape as trumps, the highest card, the follow rule and the Climb card the trick takes, with no raw values', /Escape/.test(p) && /highest/.test(p) && /follow|only card|last card|Play anything/.test(p) && /This trick takes Climb card [+-]1 \([+-]1 point\)\./.test(p) && !BAD.test(p) && !V5.test(p), p);
   guard = 0;
-  while (ctl.state.phase !== 'summit' && ctl.state.phase !== 'over' && guard++ < 200) {
-    if (ctl.isBotTurn()) ctl.stepBot(); else applyAction(ctl.state, ctl.legalActions()[0]);
-  }
-  while (ctl.state.phase === 'summit' && !ctl.isHumanTurn()) ctl.stepBot();
-  if (ctl.state.phase === 'summit') q = turnPrompt(ctl.view(0));
-  check('prompt: the summit prompt names the Chase cost', /Chase \(pay 2/.test(q), q);
-  guard = 0;
-  while (ctl.state.phase === 'summit' && guard++ < 10) applyAction(ctl.state, { type: 'summit', choice: 'chase' });
-  guard = 0;
-  while (!(ctl.isHumanTurn() && ctl.state.phase === 'descent') && ctl.state.phase !== 'over' && guard++ < 100) {
+  while (!(ctl.isHumanTurn() && ctl.state.phase === 'descent') && ctl.state.phase !== 'over' && guard++ < 200) {
     if (ctl.isBotTurn()) ctl.stepBot(); else applyAction(ctl.state, ctl.legalActions()[0]);
   }
   const d = ctl.isHumanTurn() && ctl.state.phase === 'descent' ? turnPrompt(ctl.view(0)) : '';
-  check('prompt: a descent prompt names Home as trumps and the Brumby card the trick takes', /Home/.test(d) && /Brumby|Colt|Flint|Wombat/.test(d) && !BAD.test(d), d);
+  check('prompt: a descent prompt names Home as trumps, the lowest card and the Brumby card the trick takes', /Home/.test(d) && /lowest/.test(d) && /This trick takes (Brumby|Colt|Flint|Wombat)/.test(d) && !BAD.test(d) && !V5.test(d), d);
+}
+
+// ---------- no v5 code left in the UI ----------
+{
+  const files = ['main.js', 'components.js', 'board.js', 'text.js', 'landing.js', 'assets.js', 'viewmodel.js', 'preview.js', 'controller.js'];
+  const src = files.map((f) => fs.readFileSync(new URL(`../src/ui/${f}`, import.meta.url), 'utf8')).join('\n');
+  const css = fs.readFileSync(new URL('../style.css', import.meta.url), 'utf8');
+  check('no v5 code left: no Mountain, mob marker, Chase / Watch decision, reveal, turned hand or chase cost in the UI sources', !/Mountain|mountain[-A-Z_]|mob-marker|handsTurned|chaseCost|summit-chosen|summit-revealed|marker-moved|brumby-kept|brumby-discarded|decisionHtml|revealHtml|turnHtml|summitModalHtml|descentGoal|stakesText|choiceArt/.test(src.replace(/\/\/.*$/gm, '')));
+  check('no v5 styles left: no mountain, schip, decide, reveal or turned rules in style.css', !/\.mountain|\.schip|\.decide|\.reveal|is-turned|\.turn__|\.goal\b|kept__/.test(css));
+  check('the new suit colours are the style tokens (Escape orange, Descent sky blue, Muster violet)', /--s-escape: #f07f1e/i.test(css) && /--s-descent: #6fa8d6/i.test(css) && /--s-muster: #944ddb/i.test(css) && /--s-home: #3c5677/i.test(css));
+  check('components.js exports no v5 builders', !['decisionHtml', 'revealHtml', 'turnHtml', 'summitModalHtml', 'mountainHtml'].some((k) => k in components));
 }
 
 done();
