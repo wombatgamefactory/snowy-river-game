@@ -99,6 +99,7 @@ async function humanStep(page, stats) {
     await tryClick(page.locator('.cover .btn--primary'));
     return 'cover';
   }
+  if (await page.locator('#summit-continue').count()) { await tryClick(page.locator('#summit-continue')); return 'summit'; }
   if (await page.locator('#continue').count()) { if (await tryClick(page.locator('#continue'))) stats.summaries++; return 'summary'; }
   const legal = page.locator('.hand .card.is-legal');
   if (await legal.count()) {

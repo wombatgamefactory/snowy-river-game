@@ -213,6 +213,7 @@ async function humanStep(page, stats, opts = {}) {
     await tryClick(page.locator('.cover .btn--primary'));
     return 'cover';
   }
+  if (await page.locator('#summit-continue').count()) { await tryClick(page.locator('#summit-continue')); return 'summit'; }
   if (await page.locator('#continue').count()) {
     if (opts.stopAtReckoning && (await opts.stopAtReckoning())) return 'stop';
     if (await tryClick(page.locator('#continue'))) { stats.summaries++; if (opts.onSummary) await opts.onSummary(); }
@@ -795,7 +796,10 @@ await scenario('The summit: the banner switches, the Climb row is empty, the Bru
     await page.waitForTimeout(120);
     await shot(page, `summit-beat-${n}p-${w}`, { fullPage: false });
     await dimCheck(page, `${tag} summit beat`);
-    // through the beat to the first descent card
+    // the beat waits for its button; then through to the first descent card
+    const waits = await page.waitForTimeout(1500).then(() => page.locator('.overlay--summit').count());
+    check(`${tag} the summit beat stays up until its button is pressed`, waits === 1 && (await page.locator('#summit-continue').count()) === 1);
+    await tryClick(page.locator('#summit-continue'));
     await page.waitForFunction(() => !document.querySelector('.overlay--summit') && document.querySelector('.phasebar--descent'), null, { timeout: 30000 }).catch(() => {});
     await page.waitForSelector('.hand .card.is-legal', { timeout: 30000 }); // the bots lead the descent if it is theirs; nothing is played here
     await page.waitForFunction(() => [...document.querySelectorAll('.hand .cardimg')].every((i) => i.complete), null, { timeout: 5000 }).catch(() => {});

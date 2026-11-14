@@ -159,6 +159,9 @@ async function runPlayback() {
       // A human reads the reckoning and clicks on; with only bots playing it moves on by itself.
       await modalWait(ctl.humanSeats.length ? Infinity : Math.max(600, 4500 * (botDelay / 800)));
       ui.modal = null;
+    } else if (f.kind === 'summit-opened' && ctl.humanSeats.length) {
+      // The rules change at the summit: a human closes this with its button; an all-bot game moves on by itself.
+      await modalWait(Infinity);
     } else if (f.hold > 0 && botDelay > 0) {
       await wait(f.hold * (botDelay / 800));
     }

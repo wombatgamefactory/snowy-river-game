@@ -65,6 +65,7 @@ const tryClick = (loc) => loc.click({ timeout: 5000 }).then(() => true, () => fa
 async function playSome(page, count) {
   let played = 0;
   for (let guard = 0; guard < 600 && played < count; guard++) {
+    if (await page.locator('#summit-continue').count()) { await tryClick(page.locator('#summit-continue')); continue; }
     if (await page.locator('#continue').count()) { await tryClick(page.locator('#continue')); continue; }
     if (await page.locator('.decision [data-action=decide]').count()) { await tryClick(page.locator('.decision [data-action=decide]').first()); continue; }
     const legal = page.locator('.hand .card.is-legal');

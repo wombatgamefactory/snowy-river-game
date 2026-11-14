@@ -265,6 +265,7 @@ body[data-busy='1'] .stage { cursor: pointer; }
 /* the current trick */
 .trick__title { font-family: var(--font-display); margin: 2px 0 6px; font-size: 1rem; }
 .led { white-space: nowrap; }
+.row__badge { width: 18px; height: 18px; margin-right: 3px; vertical-align: -4px; }
 .led__badge { width: 22px; height: 22px; margin-right: 3px; vertical-align: -6px; }
 .prize { display: inline-block; font-family: var(--font-body); font-weight: 900; font-size: 0.82rem; border-radius: 999px; padding: 0 9px; margin-left: 4px; vertical-align: 1px; background: var(--paper-2); }
 .prize--pos { background: #d6ecd9; color: #1f5a31; } .prize--neg { background: #f4d4cf; color: var(--bad); }
@@ -347,6 +348,7 @@ body[data-busy='1'] .stage { cursor: pointer; }
 /* the summit: a beat that shows the switch (the Climb row is empty, lowest wins, Home is trumps, the Brumby row is dealt) */
 .end--summit { max-width: 600px; text-align: center; }
 .end--summit h2 { font-size: 1.45rem; }
+.end--summit .end__buttons { justify-content: center; }
 .summit__swap { display: flex; justify-content: center; align-items: center; gap: 10px; margin: 8px 0 10px; }
 .summit__side { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 150px; padding: 8px 6px; border-radius: 12px; border: 3px solid var(--ink); line-height: 1.15; }
 .summit__side b { font-family: var(--font-display); font-weight: 400; font-size: 1.15rem; }

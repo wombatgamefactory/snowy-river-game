@@ -172,7 +172,7 @@ export function climbRowHtml(vm) {
   else if (b.phase === 'climb') line = b.climbNext === null ? 'The Climb row is empty.' : `Climb trick ${b.climbNext + 1} takes ${rowCardName(b.climbRowDealt[b.climbNext])}.${minus >= 0 && minus > b.climbNext ? ` The -1 card is on trick ${minus + 1}.` : ''}`;
   else line = 'The Climb row is empty: all six taken. That is the summit.';
   return `<div class="row row--climb" aria-label="The Climb row">
-    <p class="row__title">The Climb row <small class="row__rule">${b.phase === 'climb' ? 'highest wins &middot; Escape trumps' : 'won on the way up'}</small></p>
+    <p class="row__title">The Climb row <small class="row__rule">${b.phase === 'climb' ? 'highest wins' : 'won on the way up'} &middot; ${badgeImg(b.trumpClimb, 'row__badge')}${esc(SUIT_NAMES[b.trumpClimb])} ${b.phase === 'climb' ? 'trumps' : 'was trumps'}</small></p>
     <ol class="row__slots row__slots--climb">${slots}</ol>
     <p class="row__line" id="climb-line">${esc(line)}</p>
   </div>`;
@@ -199,7 +199,7 @@ export function rowHtml(vm) {
     ? `<details class="row__discard" data-panel="discard"${vm.ui.panels.discard ? ' open' : ''}><summary>Discard <b>${b.discard.length}</b></summary><span class="row__thumbs">${b.discard.map((id) => `<span class="row__thumb" title="${esc(rowCardName(id))}">${brumbyImg(id, 'row__thumbimg')}</span>`).join('')}</span></details>`
     : '<span class="row__pile">Discard <b>0</b></span>';
   return `<div class="row row--brumby" aria-label="The Brumby row">
-    <p class="row__title">The Brumby row <small class="row__rule">lowest wins &middot; Home trumps</small></p>
+    <p class="row__title">The Brumby row <small class="row__rule">lowest wins &middot; ${badgeImg(b.trumpDescent, 'row__badge')}${esc(SUIT_NAMES[b.trumpDescent])} trumps</small></p>
     <ol class="row__slots row__slots--brumby${dealt ? '' : ' is-down'}">${slots}</ol>
     <p class="row__line" id="row-line">${esc(line)}</p>
     <div class="row__piles"><span class="row__pile">Deck <b>${b.deckCount}</b></span>${discard}</div>
@@ -332,6 +332,7 @@ export function summitHtml(vm) {
     ${rowStrip(ban.row)}
     <p class="summit__colt"${ban.colt ? '' : ' hidden'}>${ban.colt ? esc(rowSentence(ban.row)) : ''}</p>
     <p class="summit__note">${esc(leader)} ${youName(leader) ? 'lead' : 'leads'} the descent, having won the last climb trick. Every card in the row goes to whoever wins its trick, good or bad.</p>
+    ${vm.humanSeats.length ? '<div class="end__buttons"><button type="button" class="btn btn--primary btn--big" data-action="continue" id="summit-continue" data-autofocus>Start the descent</button></div>' : ''}
   </div></div>`;
 }
 
